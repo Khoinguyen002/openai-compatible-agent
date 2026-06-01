@@ -4,25 +4,18 @@ import { prisma } from "../db/client.js";
 import { config } from "../config/index.js";
 import { pruneContext } from "./prune.js";
 import { childLogger } from "../logger.js";
+import { Message, ToolCall } from "./type.js";
 
 const log = childLogger({ module: "hydrator" });
 
 // Re-export so callers don't need to import from the SDK directly
 export type { ChatMessages };
 
-type StoredToolCall = {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-};
-
 /**
  * Loads all prior context_items for the session, applies pruning if needed,
  * and converts rows to ChatMessages[] (the format fromChatMessages() expects).
  */
-export async function hydrateContext(
-  sessionId: string,
-): Promise<ChatMessages[]> {
+export async function hydrateContext(sessionId: string): Promise<Message[]> {
   const rows = await prisma.contextItem.findMany({
     where: { sessionId },
     orderBy: { sequence: "asc" },
@@ -42,7 +35,7 @@ export async function hydrateContext(
   return rows.map(rowToMessage);
 }
 
-function rowToMessage(row: ContextItem): ChatMessages {
+function rowToMessage(row: ContextItem): Message {
   if (row.role === "user") {
     return { role: "user", content: row.content ?? "" };
   }
@@ -50,31 +43,38 @@ function rowToMessage(row: ContextItem): ChatMessages {
   if (row.role === "tool") {
     return {
       role: "tool",
-      toolCallId: row.toolCallId ?? "",
+      tool_call_id: row.toolCallId ?? "",
       content: row.content ?? "",
+      name: row.toolCalls
+        ? ((JSON.parse(row.toolCalls) as ToolCall[]).find(
+            (tc) => tc.id === row.toolCallId,
+          )?.function.name ?? "")
+        : "",
     };
   }
 
   // assistant row
   const toolCalls = row.toolCalls
-    ? (JSON.parse(row.toolCalls) as StoredToolCall[])
+    ? (JSON.parse(row.toolCalls) as ToolCall[])
     : null;
 
   if (toolCalls && toolCalls.length > 0) {
     return {
       role: "assistant",
-      content: row.content ?? null,
-      toolCalls: toolCalls.map((tc) => ({
+      content: (row.content as string) ?? null,
+      tool_calls: toolCalls.map((tc) => ({
         id: tc.id,
         type: "function" as const,
-        function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
+        function: {
+          name: tc.function.name,
+          arguments: JSON.stringify(tc.function.arguments),
+        },
       })),
     };
   }
 
   return {
     role: "assistant",
-    content: row.content ?? null,
-    reasoning: row.reasoning ?? null,
+    content: (row.content as string) ?? null,
   };
 }

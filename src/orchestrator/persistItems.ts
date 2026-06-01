@@ -2,11 +2,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../db/client.js";
 import { PendingContextItem } from "./toolWrapper.js";
 import { childLogger } from "../logger.js";
+import { NonStreamingChoice, ToolMessage, UserMessage } from "./type.js";
 
 export async function persistItems(
   sessionId: string,
   senderUserId: bigint,
-  items: PendingContextItem[],
+  items: (NonStreamingChoice["message"] | ToolMessage | UserMessage)[],
   reqLog: ReturnType<typeof childLogger>,
 ): Promise<void> {
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -23,10 +24,12 @@ export async function persistItems(
           sequence: seq++,
           role: item.role,
           senderUserId: item.role === "user" ? senderUserId : null,
-          content: item.content ?? null,
-          reasoning: item.reasoning ?? null,
-          toolCalls: item.toolCalls ? JSON.stringify(item.toolCalls) : null,
-          toolCallId: item.toolCallId ?? null,
+          content: (item.content as string) ?? null,
+          reasoning: (item as NonStreamingChoice["message"]).reasoning ?? null,
+          toolCalls: (item as NonStreamingChoice["message"]).tool_calls
+            ? JSON.stringify((item as NonStreamingChoice["message"]).tool_calls)
+            : null,
+          toolCallId: (item as ToolMessage).tool_call_id ?? null,
         },
       });
     }
