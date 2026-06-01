@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.env.local
+*.env
+prisma/migrations/*/
+!prisma/migrations/0001_init/
