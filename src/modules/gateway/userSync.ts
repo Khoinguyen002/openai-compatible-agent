@@ -1,5 +1,5 @@
 import type { User as TelegramUser } from 'grammy/types';
-import { prisma } from '../db/client.js';
+import { prisma } from '../../db/client.js';
 
 /**
  * Upserts a Telegram user into the DB.

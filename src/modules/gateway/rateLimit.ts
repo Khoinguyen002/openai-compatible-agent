@@ -1,6 +1,6 @@
-import { prisma } from "../db/client.js";
-import { config } from "../config/index.js";
-import { childLogger } from "../logger.js";
+import { prisma } from "../../db/client.js";
+import { config } from "../../config/index.js";
+import { childLogger } from "../logger/index.js";
 
 const log = childLogger({ module: "rateLimit" });
 

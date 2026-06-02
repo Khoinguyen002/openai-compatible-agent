@@ -1,5 +1,5 @@
-import { prisma } from '../db/client.js';
-import { childLogger } from '../logger.js';
+import { prisma } from '../../../db/client.js';
+import { childLogger } from '../../logger/index.js';
 
 const log = childLogger({ module: 'session' });
 

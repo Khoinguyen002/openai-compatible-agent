@@ -73,6 +73,7 @@ export type AssistantMessage = {
   content?: string;
   name?: string;
   tool_calls?: ToolCall[];
+  reasoning?: string;
 };
 export type Message =
   | UserMessage

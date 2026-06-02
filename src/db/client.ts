@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@prisma/client";
-import { logger } from "../logger.js";
+import { logger } from "../modules/logger/index.js";
 
 const dbUrl = process.env.DATABASE_URL || "file:src/db/dev.db";
 // PrismaBetterSqlite3 accepts file: prefixed paths directly

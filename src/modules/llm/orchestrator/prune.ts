@@ -1,5 +1,5 @@
 import type { ContextItem } from '@prisma/client';
-import { childLogger } from '../logger.js';
+import { childLogger } from '../../logger/index.js';
 
 const log = childLogger({ module: 'pruner' });
 

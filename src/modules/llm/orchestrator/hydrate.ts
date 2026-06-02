@@ -1,9 +1,7 @@
-import type { ContextItem } from "@prisma/client";
 import type { ChatMessages } from "@openrouter/sdk/models";
-import { prisma } from "../db/client.js";
-import { config } from "../config/index.js";
-import { pruneContext } from "./prune.js";
-import { childLogger } from "../logger.js";
+import type { ContextItem } from "@prisma/client";
+import { prisma } from "../../../db/client.js";
+import { childLogger } from "../../logger/index.js";
 import { Message, ToolCall } from "./type.js";
 
 const log = childLogger({ module: "hydrator" });
@@ -20,17 +18,6 @@ export async function hydrateContext(sessionId: string): Promise<Message[]> {
     where: { sessionId },
     orderBy: { sequence: "asc" },
   });
-
-  // const { rows: pruned, pruned: wasPruned, turnsRemoved } = pruneContext(
-  //   rows,
-  //   config.MODEL_CONTEXT_WINDOW_TOKENS,
-  // );
-
-  // if (wasPruned) {
-  //   log.warn({ sessionId, turnsRemoved }, 'context pruned before hydration');
-  // }
-
-  // log.debug({ sessionId, totalRows: rows.length, afterPrune: pruned.length }, 'context hydrated');
 
   return rows.map(rowToMessage);
 }
@@ -61,7 +48,8 @@ function rowToMessage(row: ContextItem): Message {
   if (toolCalls && toolCalls.length > 0) {
     return {
       role: "assistant",
-      content: (row.content as string) ?? null,
+      content: row.content ?? "",
+      reasoning: row.reasoning ?? "",
       tool_calls: toolCalls.map((tc) => ({
         id: tc.id,
         type: "function" as const,
@@ -76,5 +64,6 @@ function rowToMessage(row: ContextItem): Message {
   return {
     role: "assistant",
     content: (row.content as string) ?? null,
+    reasoning: row.reasoning ?? "",
   };
 }

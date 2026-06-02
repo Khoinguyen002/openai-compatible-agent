@@ -1,6 +1,7 @@
 import { z } from "zod";
 import dotenv from "dotenv";
 
+process.env.TZ = "Asia/Ho_Chi_Minh";
 dotenv.config();
 
 const schema = z.object({
@@ -51,6 +52,18 @@ const schema = z.object({
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
+  // File system tooling
+  WORKSPACE_DIR: z.string().default("workspace"),
+  FS_TOOLS_ENABLED: z
+    .string()
+    .transform((v) => v === "true")
+    .default(false),
+  FS_MAX_FILE_BYTES: z.coerce.number().int().positive().optional(),
+  FS_WORKSPACE_QUOTA_BYTES: z.coerce.number().int().positive().optional(),
+  // Admin allowlist for FS tools: comma-separated numeric Telegram user ids
+  ADMIN_USER_IDS: z.string().optional(),
+  // Tavily integration (optional)
+  TAVILY_API_KEY: z.string().optional(),
 });
 
 function loadConfig() {
