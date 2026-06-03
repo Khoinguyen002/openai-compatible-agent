@@ -1,10 +1,7 @@
 import type { ChatMessages } from "@openrouter/sdk/models";
 import type { ContextItem } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
-import { childLogger } from "../../logger/index.js";
 import { Message, ToolCall } from "./type.js";
-
-const log = childLogger({ module: "hydrator" });
 
 // Re-export so callers don't need to import from the SDK directly
 export type { ChatMessages };

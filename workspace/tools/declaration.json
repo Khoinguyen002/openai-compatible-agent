@@ -62,5 +62,30 @@
       }
     },
     "scriptPath": "tools/implementations/calculate_message_tokens.js"
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "compare_message_length",
+      "description": "Compares two messages and returns which is longer or if they are equal.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "message1": {
+            "type": "string",
+            "description": "First message to compare"
+          },
+          "message2": {
+            "type": "string",
+            "description": "Second message to compare"
+          }
+        },
+        "required": [
+          "message1",
+          "message2"
+        ]
+      }
+    },
+    "scriptPath": "tools/implementations/compare_message_length.js"
   }
 ]

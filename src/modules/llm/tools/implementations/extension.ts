@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { syncCronScheduler } from "../../../cron/cronManager.js";
-
-const BASE_WORKSPACE = path.resolve(process.cwd(), "workspace");
-
-const TOOL_DECLARATION = path.resolve(BASE_WORKSPACE, "tools/declaration.json");
-const CRON_DECLARATION = path.resolve(BASE_WORKSPACE, "cron/declaration.json");
+import {
+  BASE_WORKSPACE,
+  CRON_DECLARATION,
+  TOOL_DECLARATION,
+} from "../../../../config/work-dirs.js";
 
 async function readRegistry(filePath: string): Promise<any[]> {
   try {
@@ -80,10 +80,9 @@ export const extensionToolsImplementations = {
     expression: string;
     description: string;
     prompt: string;
-    chatId: string;
   }) => {
     try {
-      const { name, expression, description, prompt, chatId } = args;
+      const { name, expression, description, prompt } = args;
 
       const currentCrons = await readRegistry(CRON_DECLARATION);
       const filteredCrons = currentCrons.filter((c: any) => c.name !== name);
@@ -94,7 +93,6 @@ export const extensionToolsImplementations = {
         expression,
         description,
         prompt,
-        chatId,
       });
 
       await fs.mkdir(path.dirname(CRON_DECLARATION), { recursive: true });

@@ -7,6 +7,7 @@ dotenv.config();
 const schema = z.object({
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().min(1),
+  TELEGRAM_BOT_CHAT_ID: z.string().min(1),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(16),
   TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
 

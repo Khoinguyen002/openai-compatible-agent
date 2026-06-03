@@ -2,10 +2,10 @@ import path from "path";
 import fs from "node:fs/promises";
 import { config } from "../../../../config/index.js";
 import { childLogger } from "../../../logger/index.js";
+import { BASE_WORKSPACE } from "../../../../config/work-dirs.js";
 
 const log = childLogger({ module: "fsTools" });
 
-export const BASE_WORKSPACE = path.resolve(process.cwd(), config.WORKSPACE_DIR);
 let BASE_WORKSPACE_REAL = "";
 
 export async function initWorkspace(): Promise<void> {
@@ -130,7 +130,7 @@ export const fsToolImplementations: Record<
 
     const target = await safePath(filePath);
     const st = await fs.stat(target).catch(() => null);
-    if (!st || !st.isFile) throw new Error("Not a file");
+    if (!st || !st.isFile()) throw new Error("Not a file");
 
     if (config.FS_MAX_FILE_BYTES && st.size > config.FS_MAX_FILE_BYTES) {
       throw new Error("File too large to read");

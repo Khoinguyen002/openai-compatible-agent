@@ -58,9 +58,14 @@ async function startWebhookServer() {
       const chunks: Buffer[] = [];
       req.on("data", (chunk) => chunks.push(chunk));
       req.on("end", () => {
-        (req as typeof req & { body: unknown }).body = JSON.parse(
-          Buffer.concat(chunks).toString("utf8") || "{}",
-        );
+        try {
+          (req as typeof req & { body: unknown }).body = JSON.parse(
+            Buffer.concat(chunks).toString("utf8") || "{}",
+          );
+        } catch {
+          res.writeHead(400).end("Bad Request");
+          return;
+        }
         handler(req as never, res as never);
       });
       return;

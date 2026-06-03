@@ -111,6 +111,21 @@ export const toolDeclarations = [
   {
     type: "function",
     function: {
+      name: "send_telegram_message",
+      description: "Send a message to the configured Telegram chat",
+      parameters: z
+        .object({
+          text: z
+            .string()
+            .min(1)
+            .describe("The message content to send to Telegram."),
+        })
+        .toJSONSchema(),
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "register_tool",
       description:
         "Dynamically register or update a custom runtime tool inside the active workspace.",
@@ -156,11 +171,6 @@ export const toolDeclarations = [
             .describe(
               "The specific instruction prompt that the LLM will execute when this cron triggers.",
             ),
-          chatId: z
-            .string()
-            .describe(
-              "The target Telegram chatId where the LLM's generated response must be delivered.",
-            ),
         })
         .toJSONSchema(),
     },
@@ -181,21 +191,6 @@ export const toolDeclarations = [
             .describe(
               "The exact name of the extension to be wiped out from the system.",
             ),
-        })
-        .toJSONSchema(),
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "delete_extension",
-      description: "Completely remove a dynamic tool or cron from the system.",
-      parameters: z
-        .object({
-          type: z.enum(["tool", "cron"]).describe("The category to delete."),
-          name: z
-            .string()
-            .describe("The exact name of the extension to remove."),
         })
         .toJSONSchema(),
     },

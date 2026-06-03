@@ -65,27 +65,28 @@ main().catch((err) => {
 
 To orchestrate automated background tasks, invoke the `register_cron` endpoint. The host runner automatically maps the configuration metadata to `./workspace/cron/declaration.json` and triggers hot-reloading on the core scheduling loops.
 
-### Cron Execution Code Architecture
+### Cron Execution Model (Prompt-Only)
 
-Unlike tools, crons do not accept incoming CLI user arguments because they run autonomously. However, they execute with their current working directory (`cwd`) explicitly pinned to the `workspace` directory. Any filesystem read/write loops written inside the script should utilize path mappings relative to the workspace root.
+Crons are _prompt-only_. When you call `register_cron` you submit metadata and a single natural-language `prompt` that the system will execute on schedule; the runtime stores this metadata in `./workspace/cron/declaration.json` and does **not** accept or run arbitrary JavaScript code for crons.
 
-**Cron Job JavaScript Template:**
+- When a cron fires, the Cron Engine constructs an LLM conversation using the configured `prompt` and executes it via the agent. The agent runs with its working directory pinned to the workspace root and may call registered tools as part of the response execution.
+- If you need scheduled code execution, register a standalone custom tool with `register_tool` and have the cron's `prompt` instruct the agent to call that tool. This keeps scheduling (cron) and execution (tool) responsibilities separate and auditable.
 
-```javascript
-async function executeTask() {
-  // Example background logic: Fetching external telemetry or cleaning temporary logs
-  console.log("[CRON EVENT] Initiating routine automation cycle...");
+Example `register_cron` payload:
 
-  // Custom execution workflow here...
-
-  console.log("[CRON EVENT] Automation sequence successfully completed.");
+```json
+{
+  "name": "daily_workspace_summary",
+  "expression": "0 9 * * *",
+  "description": "Generate a daily summary of workspace changes and send to Telegram.",
+  "prompt": "Summarize recent changes in the workspace and, if anything notable exists, call the tool `send_telegram_message` with a concise summary."
 }
-
-executeTask().catch((err) => {
-  console.error(`[CRON EXCEPTION]: ${err.message}`);
-  process.exit(1);
-});
 ```
+
+Execution notes:
+
+- The agent may call both system tools (declared in the codebase) and dynamic tools (declared under `./workspace/tools/declaration.json`).
+- Tool code runs as sandboxed child processes from the workspace root; tools continue to follow the `process.argv[2]` base64 input / JSON stdout contract (see the Custom Tool template above).
 
 ---
 

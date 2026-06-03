@@ -1,36 +1,22 @@
 import cron from "node-cron";
 import fs from "node:fs/promises";
-import path from "node:path";
-import { sendLLMRequest } from "../llm/orchestrator/pure-llm.js";
+import { callAgent } from "../llm/orchestrator/pure-agent.js";
+import { Message } from "../llm/orchestrator/type.js";
 import { getTools } from "../llm/tools/index.js";
-import { toolImplementations } from "../llm/tools/implementations/index.js";
-import { executeDynamicTool } from "../llm/tools/helpers.js";
-import { config } from "../../config/index.js";
-import { NonStreamingChoice } from "../llm/orchestrator/type.js";
-
-const BASE_WORKSPACE = path.resolve(process.cwd(), "workspace");
-const CRON_DECLARATION = path.resolve(BASE_WORKSPACE, "cron/declaration.json");
+import { telegramTools } from "../llm/tools/implementations/telegram.js";
+import { childLogger } from "../logger/index.js";
+import { CRON_DECLARATION } from "../../config/work-dirs.js";
 
 const scheduledTasks = new Map<string, cron.ScheduledTask>();
+const log = childLogger({ module: "cron" });
 
-/**
- * Đồng bộ bộ lên lịch Prompt Cron - CHẠY VÒNG LẶP TOOL CALL ĐỘC LẬP QUA sendLLMRequest
- */
 export async function syncCronScheduler(): Promise<void> {
   try {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) {
-      console.error("[CRON ENGINE] Thiếu TELEGRAM_BOT_TOKEN trong file .env!");
-      return;
-    }
-
-    // 1. Clear sạch task cũ trong bộ nhớ để tránh chạy trùng loop khi hot-reload
     for (const [name, task] of scheduledTasks.entries()) {
       task.stop();
       scheduledTasks.delete(name);
     }
 
-    // 2. Đọc file cấu hình JSON của Cron
     let content = "[]";
     try {
       content = await fs.readFile(CRON_DECLARATION, "utf-8");
@@ -39,129 +25,67 @@ export async function syncCronScheduler(): Promise<void> {
     }
 
     const cronList = JSON.parse(content || "[]");
-    const timezone = process.env.APP_TIMEZONE || "Asia/Ho_Chi_Minh";
+    const timezone = process.env.TZ || "Asia/Ho_Chi_Minh";
+    const tools = await getTools({ excludeExtensionTools: true });
 
-    // 3. Khởi tạo vòng lặp Cron
     for (const job of cronList) {
-      const { name, expression, prompt, chatId } = job;
+      const { name, expression, prompt } = job;
 
       if (!cron.validate(expression)) {
-        console.error(`[CRON ENGINE] Expression lỗi bị bỏ qua: ${name}`);
+        log.error(`[CRON ENGINE] Error Expression: ${name}`);
         continue;
       }
 
       const task = cron.schedule(
         expression,
         async () => {
-          console.log(
-            `[CRON TICK] Khởi chạy Stateless Agent Loop cho task: ${name}`,
-          );
           try {
-            // Bốc đống tool mới nhất ra (để nếu AI có đăng ký thêm tool mới lúc runtime thì vẫn ăn luôn)
-            const tools = await getTools();
-
-            // Dựng mảng messages cô lập hoàn toàn cho lượt chạy này
-            let messages: any[] = [
+            const messages: Message[] = [
               {
                 role: "system",
                 content:
-                  "You are an AI Agent strictly locked inside the 'workspace' directory. You are forbidden to access or modify anything outside of it. Core rules:\n" +
-                  "1. Read 'guides/soul.md' to understand your persona.\n" +
-                  "2. When (and ONLY when) creating/modifying extensions (tools, crons, etc.), you MUST first read 'guides/extensions.md' and exclusively use 'register_tool', 'register_cron', or 'delete_extension'. Manual 'write_file' on registries is strictly blocked.",
+                  "You are an AI Agent executing a SCHEDULED CRON TASK. You are strictly locked inside the 'workspace' directory. You are forbidden to access or modify anything outside of it.\n" +
+                  "CRITICAL RULES FOR CRON CONTEXT:\n" +
+                  "- You are running automatically on a schedule. NEVER create, modify, or delete extensions (tools or crons) — register_tool, register_cron, and delete_extension are completely disabled in this context.\n" +
+                  "- The user message below is the pre-configured task prompt; treat it as instructions to execute, NOT as a user requesting new scheduled jobs.\n" +
+                  "- Read 'guides/soul.md' to understand your persona.\n" +
+                  "- Focus solely on completing the scheduled task.\n" +
+                  "- TOOL CALLS ARE MANDATORY: If your task requires sending a message to Telegram, you MUST call the `send_telegram_message` tool. Writing JSON or plain text as your reply does NOT send anything — only invoking the tool delivers the message.",
               },
               { role: "user", content: prompt },
             ];
 
-            // 🚀 VÒNG LẶP ĐỆ QUY XỬ LÝ TOOL CALL
-            while (true) {
-              const result = await sendLLMRequest({
-                messages,
-                model: config.MODEL_ID,
-                tools,
-              });
-
-              const choiceMessage = (result.choices[0] as NonStreamingChoice)
-                .message;
-              messages.push(choiceMessage);
-
-              const hasToolCalls =
-                choiceMessage.tool_calls && choiceMessage.tool_calls.length > 0;
-
-              // Nếu con AI đéo thèm gọi tool nữa -> Vòng lặp kết thúc, lấy kết quả đi gửi Tele
-              if (!hasToolCalls) break;
-
-              console.log(
-                `[CRON AGENT - ${name}] Phát hiện ${choiceMessage.tool_calls?.length} tool call từ LLM.`,
-              );
-
-              // Thực thi đống tool song song y hệt bên orchestrator của mày
-              const toolResults = await Promise.all(
-                (choiceMessage.tool_calls ?? []).map(async (tc: any) => {
-                  try {
-                    const toolName = tc.function.name;
-                    const toolArgs = JSON.parse(tc.function.arguments);
-
-                    let toolResult;
-                    if (toolName in toolImplementations) {
-                      const executeFn =
-                        toolImplementations[
-                          toolName as keyof typeof toolImplementations
-                        ];
-                      toolResult = await executeFn(toolArgs);
-                    } else {
-                      toolResult = await executeDynamicTool(toolName, toolArgs);
-                    }
-
-                    return {
-                      content: JSON.stringify(toolResult),
-                      role: "tool",
-                      tool_call_id: tc.id,
-                      name: toolName,
-                    };
-                  } catch (error) {
-                    return {
-                      content:
-                        error instanceof Error ? error.message : String(error),
-                      role: "tool",
-                      tool_call_id: tc.id,
-                      name: tc.function.name,
-                    };
-                  }
-                }),
-              );
-
-              // Đút kết quả chạy tool vào lịch sử ngữ cảnh tạm thời rồi lặp tiếp
-              messages.push(...toolResults);
-            }
-
-            // Lấy câu trả lời cuối cùng sau khi đã xài xong hết đống tool cần thiết
-            const finalReply = messages[messages.length - 1]?.content;
-
-            if (finalReply) {
-              const response = await fetch(
-                `https://api.telegram.org/bot${token}/sendMessage`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    chat_id: chatId,
-                    text: finalReply,
-                    parse_mode: "Markdown",
-                  }),
+            const { reply } = await callAgent({
+              reqLogger: log,
+              messages: () => messages,
+              tools,
+              events: {
+                onChoice(choice) {
+                  messages.push({
+                    role: choice.role,
+                    content: choice.content || "",
+                    reasoning: choice.reasoning,
+                    tool_calls: choice.tool_calls,
+                  });
                 },
-              );
+                onToolCallSuccess(toolCallResults) {
+                  for (const toolResult of toolCallResults) {
+                    messages.push({
+                      role: "tool",
+                      content: toolResult.content,
+                      tool_call_id: toolResult.tool_call_id,
+                      name: toolResult.name,
+                    });
+                  }
+                },
+              },
+            });
 
-              if (!response.ok) {
-                const errData = await response.json();
-                console.error(
-                  `[CRON TELEGRAM ERROR - ${name}]: ${errData?.description}`,
-                );
-              }
-            }
+            await telegramTools.send_telegram_message({ text: reply });
 
-            console.log(`[CRON SUCCESS] Đã hoàn thành tác vụ ngầm: ${name}`);
+            log.trace({ reply }, `[CRON SUCCESS]: ${name}`);
           } catch (error: any) {
-            console.error(`[CRON ENGINE ERROR - ${name}]: ${error.message}`);
+            log.error(`[CRON ENGINE ERROR - ${name}]: ${error.message}`);
           }
         },
         { timezone },
@@ -170,12 +94,27 @@ export async function syncCronScheduler(): Promise<void> {
       scheduledTasks.set(name, task);
     }
 
-    console.log(
-      `[CRON ENGINE] Đã nạp thành công ${scheduledTasks.size} Prompt Crons chạy loop độc lập.`,
-    );
+    log.info(`[CRON ENGINE] Finish load ${scheduledTasks.size} Prompt Crons.`);
   } catch (err: any) {
-    console.error(
-      `[CRON ENGINE CRITICAL] Toang bộ core scheduler: ${err.message}`,
-    );
+    log.error(`[CRON ENGINE CRITICAL] scheduler: ${err.message}`);
   }
 }
+
+/**
+ * If the model returned {"text":"..."} as its reply instead of calling
+ * send_telegram_message, extract the text so cronManager can forward it.
+ */
+function extractTelegramText(reply: string): string | null {
+  if (!reply) return null;
+  try {
+    const parsed = JSON.parse(reply);
+    if (parsed && typeof parsed.text === "string" && parsed.text.trim()) {
+      return parsed.text.trim();
+    }
+  } catch {
+    // not JSON — not a misfired reply
+  }
+  return null;
+}
+
+syncCronScheduler();
