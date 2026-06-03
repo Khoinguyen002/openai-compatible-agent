@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import util from "node:util";
-import { BASE_WORKSPACE, TOOL_DECLARATION } from "../../../config/work-dirs.js";
+import {
+  BASE_WORKSPACE,
+  TOOL_DECLARATION,
+} from "../../../config/workspace-dirs.js";
 
 const execFilePromise = util.promisify(execFile);
 

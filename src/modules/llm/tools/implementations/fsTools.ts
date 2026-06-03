@@ -2,7 +2,7 @@ import path from "path";
 import fs from "node:fs/promises";
 import { config } from "../../../../config/index.js";
 import { childLogger } from "../../../logger/index.js";
-import { BASE_WORKSPACE } from "../../../../config/work-dirs.js";
+import { BASE_WORKSPACE } from "../../../../config/workspace-dirs.js";
 
 const log = childLogger({ module: "fsTools" });
 

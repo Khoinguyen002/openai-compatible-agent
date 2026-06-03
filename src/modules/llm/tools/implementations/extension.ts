@@ -5,7 +5,7 @@ import {
   BASE_WORKSPACE,
   CRON_DECLARATION,
   TOOL_DECLARATION,
-} from "../../../../config/work-dirs.js";
+} from "../../../../config/workspace-dirs.js";
 
 async function readRegistry(filePath: string): Promise<any[]> {
   try {

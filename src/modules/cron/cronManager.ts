@@ -5,7 +5,7 @@ import { Message } from "../llm/orchestrator/type.js";
 import { getTools } from "../llm/tools/index.js";
 import { telegramTools } from "../llm/tools/implementations/telegram.js";
 import { childLogger } from "../logger/index.js";
-import { CRON_DECLARATION } from "../../config/work-dirs.js";
+import { CRON_DECLARATION } from "../../config/workspace-dirs.js";
 
 const scheduledTasks = new Map<string, cron.ScheduledTask>();
 const log = childLogger({ module: "cron" });
