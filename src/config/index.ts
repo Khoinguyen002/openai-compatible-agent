@@ -25,15 +25,6 @@ const schema = z.object({
     .positive()
     .default(128_000),
   MAX_TOOL_ROUNDS: z.coerce.number().int().positive().default(10),
-  REASONING_ENABLED: z
-    .string()
-    .transform((v) => v === "true")
-    .default(true),
-  SYSTEM_PROMPT: z
-    .string()
-    .default(
-      "You are a helpful AI assistant. Be concise, accurate, and thoughtful.",
-    ),
 
   // Rate limiting
   MAX_DAILY_REQUESTS_PER_USER: z.coerce.number().int().positive().default(100),
@@ -55,16 +46,7 @@ const schema = z.object({
     .default("development"),
   // File system tooling
   WORKSPACE_DIR: z.string().default("workspace"),
-  FS_TOOLS_ENABLED: z
-    .string()
-    .transform((v) => v === "true")
-    .default(false),
   FS_MAX_FILE_BYTES: z.coerce.number().int().positive().optional(),
-  FS_WORKSPACE_QUOTA_BYTES: z.coerce.number().int().positive().optional(),
-  // Admin allowlist for FS tools: comma-separated numeric Telegram user ids
-  ADMIN_USER_IDS: z.string().optional(),
-  // Tavily integration (optional)
-  TAVILY_API_KEY: z.string().optional(),
 });
 
 function loadConfig() {
