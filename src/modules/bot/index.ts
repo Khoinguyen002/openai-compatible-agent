@@ -1,4 +1,4 @@
-import { Bot, webhookCallback } from "grammy";
+import { Bot, webhookCallback, InlineKeyboard } from "grammy";
 import { randomUUID } from "crypto";
 import { config } from "../../config/index.js";
 import { childLogger } from "../logger/index.js";
@@ -42,7 +42,7 @@ function chunkText(text: string, limit: number) {
 type ReplyContext = {
   reply: (
     text: string,
-    options?: { parse_mode?: "Markdown" },
+    options?: { parse_mode?: "Markdown"; reply_markup?: InlineKeyboard },
   ) => Promise<unknown>;
 };
 
@@ -122,10 +122,8 @@ bot.on("message:text", async (ctx) => {
   // Resolve or create session
   const sessionId = await resolveOrCreateSession(chatId, userId);
 
-  // Enqueue the agent job — serialized per session
   sessionQueue.enqueue(sessionId, async () => {
     try {
-      // Keep typing indicator alive during long reasoning loops
       const typingInterval = setInterval(() => {
         ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => undefined);
       }, 4_000);
@@ -136,25 +134,16 @@ bot.on("message:text", async (ctx) => {
           userMessage: text,
           senderUserId: userId,
           requestId,
-          async onChoice(choice) {
-            if (choice.content) {
-              await replyWithChunking(ctx, choice.content);
-            }
-
-            if (choice.tool_calls) {
-              for (const toolCall of choice.tool_calls) {
-                await replyWithChunking(
-                  ctx,
-                  `Calling tool: ${toolCall.function.name}`,
-                );
-              }
-            }
-          },
+          ...getOrchestrateEvents(ctx as unknown as ReplyContext, sessionId),
         });
       } finally {
         clearInterval(typingInterval);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message && err.message.includes("Please press Approve or Reject")) {
+        await ctx.reply(err.message).catch(() => undefined);
+        return;
+      }
       reqLog.error({ err }, "agent job failed");
       captureException(err, {
         sessionId,
@@ -168,6 +157,84 @@ bot.on("message:text", async (ctx) => {
         .catch(() => undefined);
     }
   });
+});
+
+function getOrchestrateEvents(ctx: ReplyContext, sessionId: string) {
+  return {
+    async onChoice(choice: any) {
+      if (choice.content) {
+        await replyWithChunking(ctx, choice.content);
+      }
+      if (choice.tool_calls) {
+        for (const toolCall of choice.tool_calls) {
+          await replyWithChunking(
+            ctx,
+            `Calling tool: ${toolCall.function.name}`,
+          );
+        }
+      }
+    },
+    async onApprovalRequest(tools: any[]) {
+      const toolNames = tools.map((t: any) => t.function.name).join(", ");
+      const keyboard = new InlineKeyboard()
+        .text("✅ Approve", `approve_${sessionId}`)
+        .text("❌ Reject", `reject_${sessionId}`);
+      
+      await ctx.reply(
+        `⚠️ *Security Alert*\n\nThe AI agent is attempting to execute sensitive tools: \`${toolNames}\`.\nDo you want to approve this action?`,
+        { reply_markup: keyboard, parse_mode: "Markdown" },
+      );
+    },
+  };
+}
+
+bot.on("callback_query:data", async (ctx) => {
+  const data = ctx.callbackQuery.data;
+  if (!data.startsWith("approve_") && !data.startsWith("reject_")) {
+    return;
+  }
+
+  const isApprove = data.startsWith("approve_");
+  const sessionId = data.split("_")[1];
+  const action = isApprove ? "approve" : "reject";
+
+  if (!ctx.from) return;
+  const userId = BigInt(ctx.from.id);
+
+  await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {});
+  await ctx.reply(isApprove ? "✅ Approved! Executing the requested tools..." : "❌ Tool execution rejected.");
+
+  sessionQueue.enqueue(sessionId, async () => {
+    try {
+      const typingInterval = setInterval(() => {
+        if (ctx.chat) {
+          ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => undefined);
+        }
+      }, 4_000);
+
+      try {
+        await orchestrate({
+          sessionId,
+          userMessage: "",
+          senderUserId: userId,
+          requestId: randomUUID(),
+          resumeAction: action,
+          ...getOrchestrateEvents(ctx as unknown as ReplyContext, sessionId),
+        });
+      } finally {
+        clearInterval(typingInterval);
+      }
+    } catch (err) {
+      log.error({ err }, "agent resume job failed");
+      captureException(err, {
+        sessionId,
+        userId: userId.toString(),
+      });
+      await ctx.reply("Sorry, something went wrong while resuming.").catch(() => undefined);
+    }
+  });
+
+  await ctx.answerCallbackQuery().catch(() => undefined);
 });
 
 /**

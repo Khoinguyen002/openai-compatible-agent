@@ -124,9 +124,9 @@ export const fsToolImplementations: Record<
   },
 
   read_file: async (opts: any) => {
-    const filePath = opts?.filePath;
+    const filePath = opts?.filePath || opts?.path;
     const encoding = opts?.encoding ?? "utf8";
-    if (!filePath) throw new Error("filePath is required");
+    if (!filePath) throw new Error("path is required");
 
     const target = await safePath(filePath);
     const st = await fs.stat(target).catch(() => null);

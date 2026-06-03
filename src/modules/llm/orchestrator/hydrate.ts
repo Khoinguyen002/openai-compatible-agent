@@ -1,14 +1,10 @@
-import type { ChatMessages } from "@openrouter/sdk/models";
 import type { ContextItem } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { Message, ToolCall } from "./type.js";
 
-// Re-export so callers don't need to import from the SDK directly
-export type { ChatMessages };
-
 /**
  * Loads all prior context_items for the session, applies pruning if needed,
- * and converts rows to ChatMessages[] (the format fromChatMessages() expects).
+ * and converts rows to Message[].
  */
 export async function hydrateContext(sessionId: string): Promise<Message[]> {
   const rows = await prisma.contextItem.findMany({

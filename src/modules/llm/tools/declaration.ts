@@ -102,7 +102,7 @@ export const toolDeclarations = [
       description: "Read a file from the workspace (utf8 or base64)",
       parameters: z
         .object({
-          filePath: z.string().min(1),
+          path: z.string().min(1),
           encoding: z.enum(["utf8", "base64"]).optional().default("utf8"),
         })
         .toJSONSchema(),

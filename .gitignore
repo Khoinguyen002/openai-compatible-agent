@@ -1,9 +1,27 @@
 node_modules
-workspace/cron/*
-workspace/tools/*
 dist/
+
+# Database files
+dev.db
+*.db
+*.sqlite
+*.sqlite3
+*-journal
+
+# Env files
 .env
 .env.local
 *.env
+
+# Workspace dynamic directories
+workspace/cron/*
+workspace/tools/*
+
+# Prisma migrations (only track init)
 prisma/migrations/*/
 !prisma/migrations/0001_init/
+
+# OS and Logs
+.DS_Store
+*.log
+npm-debug.log*

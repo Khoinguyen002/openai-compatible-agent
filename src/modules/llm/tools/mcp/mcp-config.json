@@ -2,7 +2,8 @@
   "mcpServers": {
     "web-fetch": {
       "command": "npx",
-      "args": ["-y", "mcp-server-fetch-typescript"]
+      "args": ["-y", "mcp-server-fetch-typescript"],
+      "requireApproval": true
     },
     "code-runner": {
       "command": "docker",
@@ -13,14 +14,25 @@
         "-v",
         "/home/khoi-nguyen/Documents/openai-compatible-agent/workspace:/agent-workspace",
         "formulahendry/mcp-server-code-runner"
-      ]
+      ],
+      "requireApproval": true
     },
     "tavily-mcp": {
       "command": "npx",
       "args": ["-y", "tavily-mcp@latest"],
       "env": {
         "TAVILY_API_KEY": "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"
-      }
+      },
+      "requireApproval": true
+    },
+    "local-filesystem": {
+      "command": "npx",
+      "args": [
+        "-y", 
+        "@modelcontextprotocol/server-filesystem",
+        "/home/khoi-nguyen/Documents/openai-compatible-agent/workspace" 
+      ],
+      "requireApproval": true
     }
   }
 }

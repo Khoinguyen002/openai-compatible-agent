@@ -1,10 +1,15 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import mcpConfig from "./mcp-config.json";
+import { childLogger } from "../../../logger/index.js";
+import { Tool } from "../../orchestrator/type.js";
+
+const log = childLogger({ module: "McpManager" });
 
 interface ServerConfig {
   command: string;
   args: string[];
+  requireApproval?: boolean;
 }
 
 interface ConfigSchema {
@@ -12,69 +17,78 @@ interface ConfigSchema {
 }
 
 export class McpManager {
-  // Bản đồ để tra cứu nhanh: tool_name -> MCP Client instance sở hữu nó
+  // Map for quick lookup: tool_name -> MCP Client instance
   private toolToClientMap = new Map<string, Client>();
-  // Mảng chứa tất cả các schema tool đã format chuẩn để gửi lên OpenRouter
-  public systemTools: any[] = [];
+  // Set of sensitive tools that require Human-in-the-Loop approval
+  private approvalRequiredTools = new Set<string>();
+  // Array containing all tool schemas formatted for OpenRouter
+  public systemTools: Tool[] = [];
 
   async initialize() {
     const config: ConfigSchema = mcpConfig;
+    const serverEntries = Object.entries(config.mcpServers);
 
-    console.log(
-      `[MCP] Phát hiện ${Object.keys(config.mcpServers).length} server trong cấu hình.`,
+    log.info(
+      `[MCP] Detected ${serverEntries.length} servers in configuration.`,
     );
 
-    for (const [serverName, serverConfig] of Object.entries(
-      config.mcpServers,
-    )) {
-      try {
-        console.log(`[MCP] Đang kết nối tới server: ${serverName}...`);
+    await Promise.all(
+      serverEntries.map(async ([serverName, serverConfig]) => {
+        try {
+          log.info(`[MCP] Connecting to server: ${serverName}...`);
 
-        const transport = new StdioClientTransport({
-          command: serverConfig.command,
-          args: serverConfig.args,
-        });
-
-        const client = new Client(
-          { name: `agent-client-${serverName}`, version: "1.0.0" },
-          { capabilities: {} },
-        );
-
-        await client.connect(transport);
-
-        // Bú danh sách tool của server này về
-        const mcpToolsResponse = await client.listTools();
-
-        for (const tool of mcpToolsResponse.tools) {
-          // 1. Đăng ký vào map tra cứu
-          this.toolToClientMap.set(tool.name, client);
-
-          // 2. Cấu trúc lại thành mảng format OpenAI/OpenRouter xài được liền
-          this.systemTools.push({
-            type: "function",
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.inputSchema,
-            },
+          const transport = new StdioClientTransport({
+            command: serverConfig.command,
+            args: serverConfig.args,
           });
-          console.log(
-            `   -> Đã nạp thành công tool: [${tool.name}] từ server [${serverName}]`,
+
+          const client = new Client(
+            { name: `agent-client-${serverName}`, version: "1.0.0" },
+            { capabilities: {} },
+          );
+
+          await client.connect(transport);
+
+          // Fetch tool list from this server
+          const mcpToolsResponse = await client.listTools();
+
+          for (const tool of mcpToolsResponse.tools) {
+            // 1. Register in lookup map
+            this.toolToClientMap.set(tool.name, client);
+
+            // 1.5. Check if server requires approval
+            if (serverConfig.requireApproval) {
+              this.approvalRequiredTools.add(tool.name);
+            }
+
+            // 2. Format tool schema for OpenAI/OpenRouter
+            this.systemTools.push({
+              type: "function",
+              function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.inputSchema,
+              },
+            });
+            log.info(
+              `   -> Successfully loaded tool: [${tool.name}] from server [${serverName}]`,
+            );
+          }
+        } catch (error: any) {
+          log.error(
+            { err: error.message },
+            `[MCP ERROR] Failed to load server [${serverName}]`,
           );
         }
-      } catch (error: any) {
-        console.error(
-          `[MCP ERROR] Thất bại khi nạp server [${serverName}]:`,
-          error.message,
-        );
-      }
-    }
-    console.log(
-      `[MCP] Hoàn thành! Tổng cộng đã bốc được ${this.systemTools.length} tools gối đầu giường.`,
+      }),
+    );
+
+    log.info(
+      `[MCP] Initialization complete! Total tools loaded: ${this.systemTools.length}.`,
     );
   }
 
-  // Hàm trung gian nhận lệnh từ Orchestrator rồi bắn cho đúng thằng MCP Server xử lý
+  // Middleware function to route tool calls from Orchestrator to the correct MCP Server
   async handleToolCall(
     toolName: string,
     argumentsString: string,
@@ -82,7 +96,7 @@ export class McpManager {
     const client = this.toolToClientMap.get(toolName);
     if (!client) {
       throw new Error(
-        `Hệ thống không tìm thấy mcp server nào nhận thầu cái tool [${toolName}] này!`,
+        `No MCP server found that provides the tool [${toolName}]!`,
       );
     }
 
@@ -92,11 +106,15 @@ export class McpManager {
       arguments: args,
     });
 
-    // Gom kết quả text trả về chuỗi thô để ném cho LLM đọc
+    // Aggregate text results into a raw string for the LLM
     return (mcpResult.content as any[]).map((c: any) => c.text).join("\n");
   }
 
   hasTool(toolName: string): boolean {
     return this.toolToClientMap.has(toolName);
+  }
+
+  requiresApproval(toolName: string): boolean {
+    return this.approvalRequiredTools.has(toolName);
   }
 }

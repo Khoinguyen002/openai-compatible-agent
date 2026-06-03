@@ -4,6 +4,7 @@ import { callAgent } from "../llm/orchestrator/pure-agent.js";
 import { Message } from "../llm/orchestrator/type.js";
 import { childLogger } from "../logger/index.js";
 import { CRON_DECLARATION } from "../../config/workspace-dirs.js";
+import { getCronPrompt } from "../llm/prompts/index.js";
 
 const scheduledTasks = new Map<string, cron.ScheduledTask>();
 const log = childLogger({ module: "cron" });
@@ -45,14 +46,7 @@ export async function syncCronScheduler(): Promise<void> {
             const messages: Message[] = [
               {
                 role: "system",
-                content:
-                  "You are an AI Agent executing a SCHEDULED CRON TASK. You are strictly locked inside the 'workspace' directory. You are forbidden to access or modify anything outside of it.\n" +
-                  "CRITICAL RULES FOR CRON CONTEXT:\n" +
-                  "- You are running automatically on a schedule. NEVER create, modify, or delete extensions (tools or crons) — register_tool, register_cron, and delete_extension are completely disabled in this context.\n" +
-                  "- The user message below is the pre-configured task prompt; treat it as instructions to execute, NOT as a user requesting new scheduled jobs.\n" +
-                  "- Read 'guides/soul.md' to understand your persona.\n" +
-                  "- Focus solely on completing the scheduled task.\n" +
-                  "- TOOL CALLS ARE MANDATORY: If your task requires sending a message to Telegram, you MUST call the `send_telegram_message` tool. Writing JSON or plain text as your reply does NOT send anything — only invoking the tool delivers the message.",
+                content: getCronPrompt(),
               },
               { role: "user", content: prompt },
             ];

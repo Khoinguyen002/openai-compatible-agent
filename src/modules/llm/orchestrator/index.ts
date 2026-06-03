@@ -4,7 +4,8 @@ import { hydrateContext } from "./hydrate.js";
 import { persistItems } from "./persistItems.js";
 import { Message } from "./type.js";
 import { getTools } from "../tools/index.js";
-import { callAgent } from "./pure-agent.js";
+import { callAgent, executeToolCalls } from "./pure-agent.js";
+import { getChatPrompt } from "../prompts/index.js";
 
 const log = childLogger({ module: "orchestrator" });
 
@@ -16,6 +17,8 @@ export interface OrchestrateOptions {
   onChoice?: NonNullable<
     Parameters<typeof callAgent>["0"]["events"]
   >["onChoice"];
+  resumeAction?: "approve" | "reject";
+  onApprovalRequest?: (tools: any[]) => Promise<void>;
 }
 
 export interface OrchestrateResult {
@@ -26,30 +29,70 @@ export interface OrchestrateResult {
 export async function orchestrate(
   opts: OrchestrateOptions,
 ): Promise<OrchestrateResult> {
-  const { sessionId, userMessage, senderUserId, requestId, onChoice } = opts;
+  const {
+    sessionId,
+    userMessage,
+    senderUserId,
+    requestId,
+    onChoice,
+    resumeAction,
+    onApprovalRequest,
+  } = opts;
   const reqLog = log.child({ sessionId, requestId });
   const start = Date.now();
   const tools = await getTools({ excludedNames: ["send_telegram_message"] });
-  console.log(tools);
 
   reqLog.info({ preview: userMessage.slice(0, 80) }, "agent loop start");
 
-  await persistItems(
-    sessionId,
-    senderUserId,
-    [{ role: "user", content: userMessage }],
-    reqLog,
-  );
+  const initialHistory = await hydrateContext(sessionId);
+  const lastMsg = initialHistory[initialHistory.length - 1];
+
+  if (resumeAction) {
+    if (
+      lastMsg &&
+      lastMsg.role === "assistant" &&
+      lastMsg.tool_calls &&
+      lastMsg.tool_calls.length > 0
+    ) {
+      let toolResults;
+      if (resumeAction === "approve") {
+        toolResults = await executeToolCalls(lastMsg.tool_calls, reqLog);
+      } else {
+        toolResults = lastMsg.tool_calls.map((tc: any) => ({
+          role: "tool" as const,
+          name: tc.function.name,
+          tool_call_id: tc.id,
+          content: "ERROR: The user rejected the execution of this tool.",
+        }));
+      }
+      await persistItems(sessionId, senderUserId, toolResults, reqLog);
+    }
+  } else {
+    if (
+      lastMsg &&
+      lastMsg.role === "assistant" &&
+      lastMsg.tool_calls &&
+      lastMsg.tool_calls.length > 0
+    ) {
+      throw new Error(
+        "A tool call is currently waiting for your approval. Please press Approve or Reject before proceeding!",
+      );
+    }
+
+    await persistItems(
+      sessionId,
+      senderUserId,
+      [{ role: "user", content: userMessage }],
+      reqLog,
+    );
+  }
 
   const getFullHistory = async () => {
     const latestHistory = await hydrateContext(sessionId);
     return [
       {
         role: "system",
-        content:
-          "You are an AI Agent strictly locked inside the 'workspace' directory. You are forbidden to access or modify anything outside of it. Core rules:\n" +
-          "1. Read 'guides/soul.md' to understand your persona.\n" +
-          "2. When (and ONLY when) creating/modifying extensions (tools, crons, etc.), you MUST first read 'guides/extensions.md' and exclusively use 'register_tool', 'register_cron', or 'delete_extension'. Manual 'write_file' on registries is strictly blocked.",
+        content: getChatPrompt(),
       },
       ...latestHistory,
     ] satisfies Message[];
@@ -69,6 +112,18 @@ export async function orchestrate(
       },
     },
   });
+
+  if (results.needsApproval && onApprovalRequest) {
+    const history = await hydrateContext(sessionId);
+    const updatedLastMsg = history[history.length - 1];
+    if (
+      updatedLastMsg &&
+      updatedLastMsg.role === "assistant" &&
+      updatedLastMsg.tool_calls
+    ) {
+      await onApprovalRequest(updatedLastMsg.tool_calls);
+    }
+  }
 
   const durationMs = Date.now() - start;
   reqLog.info("agent loop complete");
