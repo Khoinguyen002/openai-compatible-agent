@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "web-fetch": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-fetch-typescript"]
+    },
+    "code-runner": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-v",
+        "/home/khoi-nguyen/Documents/openai-compatible-agent/workspace:/agent-workspace",
+        "formulahendry/mcp-server-code-runner"
+      ]
+    },
+    "tavily-mcp": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp@latest"],
+      "env": {
+        "TAVILY_API_KEY": "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"
+      }
+    }
+  }
+}

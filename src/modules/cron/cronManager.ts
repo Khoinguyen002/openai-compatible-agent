@@ -2,8 +2,6 @@ import cron from "node-cron";
 import fs from "node:fs/promises";
 import { callAgent } from "../llm/orchestrator/pure-agent.js";
 import { Message } from "../llm/orchestrator/type.js";
-import { getTools } from "../llm/tools/index.js";
-import { telegramTools } from "../llm/tools/implementations/telegram.js";
 import { childLogger } from "../logger/index.js";
 import { CRON_DECLARATION } from "../../config/workspace-dirs.js";
 
@@ -26,7 +24,11 @@ export async function syncCronScheduler(): Promise<void> {
 
     const cronList = JSON.parse(content || "[]");
     const timezone = process.env.TZ || "Asia/Ho_Chi_Minh";
-    const tools = await getTools({ excludeExtensionTools: true });
+    const tools = await (
+      await import("../llm/tools/index.js").then((mod) => mod.getTools)
+    )({
+      excludedNames: ["register_tool", "register_cron", "delete_extension"],
+    });
 
     for (const job of cronList) {
       const { name, expression, prompt } = job;
@@ -74,14 +76,11 @@ export async function syncCronScheduler(): Promise<void> {
                       role: "tool",
                       content: toolResult.content,
                       tool_call_id: toolResult.tool_call_id,
-                      name: toolResult.name,
                     });
                   }
                 },
               },
             });
-
-            await telegramTools.send_telegram_message({ text: reply });
 
             log.trace({ reply }, `[CRON SUCCESS]: ${name}`);
           } catch (error: any) {

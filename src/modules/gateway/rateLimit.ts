@@ -19,11 +19,11 @@ export async function checkRateLimit(userId: bigint): Promise<RateLimitResult> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
 
   if (!user) return { allowed: false, reason: "User not found." };
-  if (!user.isWhitelisted)
-    return {
-      allowed: false,
-      reason: "You are not authorized to use this bot.",
-    };
+  // if (!user.isWhitelisted)
+  //   return {
+  //     allowed: false,
+  //     reason: "You are not authorized to use this bot.",
+  //   };
 
   const now = new Date();
 

@@ -29,11 +29,6 @@ function rowToMessage(row: ContextItem): Message {
       role: "tool",
       tool_call_id: row.toolCallId ?? "",
       content: row.content ?? "",
-      name: row.toolCalls
-        ? ((JSON.parse(row.toolCalls) as ToolCall[]).find(
-            (tc) => tc.id === row.toolCallId,
-          )?.function.name ?? "")
-        : "",
     };
   }
 
@@ -52,7 +47,7 @@ function rowToMessage(row: ContextItem): Message {
         type: "function" as const,
         function: {
           name: tc.function.name,
-          arguments: JSON.stringify(tc.function.arguments),
+          arguments: tc.function.arguments,
         },
       })),
     };

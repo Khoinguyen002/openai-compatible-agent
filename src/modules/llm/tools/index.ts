@@ -1,19 +1,20 @@
 import { toolDeclarations } from "./declaration.js";
 import { getDynamicToolsDeclaration } from "./helpers.js";
+import { McpManager } from "./mcp/McpManager.js";
 
-const EXTENSION_TOOL_NAMES = new Set([
-  "register_tool",
-  "register_cron",
-  "delete_extension",
-]);
+type SystemToolName = (typeof toolDeclarations)[number]["function"]["name"];
 
-export const getTools = async (opts?: { excludeExtensionTools?: boolean }) => {
+export const mcpManager = new McpManager();
+await mcpManager.initialize();
+
+export const getTools = async (opts?: { excludedNames: SystemToolName[] }) => {
   const systemTools = toolDeclarations;
   const dynamicTools = await getDynamicToolsDeclaration();
-  const all = [...systemTools, ...dynamicTools];
 
-  if (opts?.excludeExtensionTools) {
-    return all.filter((t) => !EXTENSION_TOOL_NAMES.has(t.function?.name));
+  const all = [...systemTools, ...dynamicTools, ...mcpManager.systemTools];
+
+  if (opts?.excludedNames) {
+    return all.filter((t) => !opts.excludedNames.includes(t.function.name));
   }
 
   return all;

@@ -130,20 +130,30 @@ bot.on("message:text", async (ctx) => {
         ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => undefined);
       }, 4_000);
 
-      let reply: string;
       try {
-        const result = await orchestrate({
+        await orchestrate({
           sessionId,
           userMessage: text,
           senderUserId: userId,
           requestId,
+          async onChoice(choice) {
+            if (choice.content) {
+              await replyWithChunking(ctx, choice.content);
+            }
+
+            if (choice.tool_calls) {
+              for (const toolCall of choice.tool_calls) {
+                await replyWithChunking(
+                  ctx,
+                  `Calling tool: ${toolCall.function.name}`,
+                );
+              }
+            }
+          },
         });
-        reply = result.reply;
       } finally {
         clearInterval(typingInterval);
       }
-
-      await replyWithChunking(ctx, reply);
     } catch (err) {
       reqLog.error({ err }, "agent job failed");
       captureException(err, {

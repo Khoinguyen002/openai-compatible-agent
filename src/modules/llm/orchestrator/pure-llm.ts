@@ -5,7 +5,6 @@ const url = "https://openrouter.ai/api/v1/chat/completions";
 const options = {
   method: "POST",
   headers: {
-    "X-OpenRouter-Experimental-Metadata": "enabled",
     Authorization: `Bearer ${config.OPENROUTER_API_KEY}`,
     "Content-Type": "application/json",
   },

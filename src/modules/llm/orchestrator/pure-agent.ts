@@ -1,7 +1,7 @@
 import { config } from "../../../config/index.js";
 import { logger } from "../../logger/index.js";
 import { executeDynamicTool } from "../tools/helpers.js";
-import { toolImplementations } from "../tools/index.js";
+import { mcpManager, toolImplementations } from "../tools/index.js";
 import { sendLLMRequest } from "./pure-llm.js";
 import { Message, NonStreamingChoice, Tool, ToolMessage } from "./type.js";
 
@@ -36,7 +36,13 @@ export const callAgent = async ({
         reqLogger.warn("Maximum turns reached");
         break;
       }
-
+      reqLogger.trace(
+        {
+          messages:
+            typeof messages === "function" ? await messages() : messages,
+        },
+        "messages before LLM call",
+      );
       const result = await sendLLMRequest({
         messages: typeof messages === "function" ? await messages() : messages,
         model: config.MODEL_ID,
@@ -44,6 +50,11 @@ export const callAgent = async ({
       });
 
       reqLogger.trace({ result }, "LLM response received");
+      const choice = result?.choices?.[0];
+
+      if (!choice) {
+        throw new Error("No choices returned from LLM");
+      }
 
       choiceMessage = (result.choices[0] as NonStreamingChoice).message;
       await onChoice?.(choiceMessage);
@@ -88,6 +99,11 @@ export const callAgent = async ({
                   toolName as keyof typeof toolImplementations
                 ];
               toolResult = await executeFn(toolArgs);
+            } else if (mcpManager && mcpManager.hasTool(toolName)) {
+              toolResult = await mcpManager.handleToolCall(
+                toolName,
+                tc.function.arguments,
+              );
             } else {
               toolResult = await executeDynamicTool(toolName, toolArgs);
             }

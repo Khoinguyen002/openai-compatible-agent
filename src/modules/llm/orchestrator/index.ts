@@ -13,6 +13,9 @@ export interface OrchestrateOptions {
   userMessage: string;
   senderUserId: bigint;
   requestId: string;
+  onChoice?: NonNullable<
+    Parameters<typeof callAgent>["0"]["events"]
+  >["onChoice"];
 }
 
 export interface OrchestrateResult {
@@ -23,10 +26,11 @@ export interface OrchestrateResult {
 export async function orchestrate(
   opts: OrchestrateOptions,
 ): Promise<OrchestrateResult> {
-  const { sessionId, userMessage, senderUserId, requestId } = opts;
+  const { sessionId, userMessage, senderUserId, requestId, onChoice } = opts;
   const reqLog = log.child({ sessionId, requestId });
   const start = Date.now();
-  const tools = await getTools();
+  const tools = await getTools({ excludedNames: ["send_telegram_message"] });
+  console.log(tools);
 
   reqLog.info({ preview: userMessage.slice(0, 80) }, "agent loop start");
 
@@ -56,7 +60,8 @@ export async function orchestrate(
     tools,
     reqLogger: reqLog,
     events: {
-      onChoice(choiceMessage) {
+      async onChoice(choiceMessage) {
+        await onChoice?.(choiceMessage);
         return persistItems(sessionId, senderUserId, [choiceMessage], reqLog);
       },
       onToolCallSuccess(toolCallResults) {

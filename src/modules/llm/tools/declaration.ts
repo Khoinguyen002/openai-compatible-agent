@@ -195,4 +195,4 @@ export const toolDeclarations = [
         .toJSONSchema(),
     },
   },
-] satisfies Tool[];
+] as const satisfies Tool[];

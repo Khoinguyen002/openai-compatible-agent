@@ -58,7 +58,6 @@ export type ToolMessage = {
   role: "tool";
   content: string;
   tool_call_id: string;
-  name?: string;
 };
 export type UserMessage = {
   role: "user";
