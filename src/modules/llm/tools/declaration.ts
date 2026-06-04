@@ -117,8 +117,12 @@ export const toolDeclarations = [
         .object({
           text: z
             .string()
-            .min(1)
-            .describe("The message content to send to Telegram."),
+            .optional()
+            .describe("The message content to send to Telegram. Use this or 'message'."),
+          message: z
+            .string()
+            .optional()
+            .describe("Alias for 'text'. The message content to send to Telegram."),
         })
         .toJSONSchema(),
     },
@@ -139,7 +143,9 @@ export const toolDeclarations = [
           parameters: z
             .record(z.string(), z.any())
             .describe("JSON Schema for inputs."),
-          code: z.string().describe("Pure JS code execution logic."),
+          code: z.string().describe(
+            "Pure JS code execution logic. IMPORTANT: Read workspace/guides/tools.md first for the required template, argument parsing convention, and output format before writing any code.",
+          ),
         })
         .toJSONSchema(),
     },
@@ -171,6 +177,39 @@ export const toolDeclarations = [
             .describe(
               "The specific instruction prompt that the LLM will execute when this cron triggers.",
             ),
+          active: z
+            .boolean()
+            .optional()
+            .default(true)
+            .describe("Whether the cron is active. Defaults to true. Set to false to register but not schedule."),
+        })
+        .toJSONSchema(),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_extensions",
+      description:
+        "Returns the current list of registered dynamic tools and scheduled cron jobs. Use this to check what is already registered before creating or modifying extensions.",
+      parameters: z.object({}).toJSONSchema(),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "toggle_extension",
+      description:
+        "Enable or disable a dynamic tool or cron job without deleting it. For crons, the scheduler hot-reloads immediately.",
+      parameters: z
+        .object({
+          type: z
+            .enum(["tool", "cron"])
+            .describe("The category of the extension to toggle."),
+          name: z.string().describe("The exact name of the extension."),
+          active: z
+            .boolean()
+            .describe("true to enable, false to disable."),
         })
         .toJSONSchema(),
     },

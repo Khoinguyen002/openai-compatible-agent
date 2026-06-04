@@ -2,34 +2,38 @@ import path from "path";
 import fs from "node:fs/promises";
 import { config } from "../../../../config/index.js";
 import { childLogger } from "../../../logger/index.js";
-import { BASE_WORKSPACE } from "../../../../config/workspace-dirs.js";
 
 const log = childLogger({ module: "fsTools" });
 
 let BASE_WORKSPACE_REAL = "";
 
 export async function initWorkspace(): Promise<void> {
-  await fs.mkdir(BASE_WORKSPACE, { recursive: true });
-  BASE_WORKSPACE_REAL = await fs.realpath(BASE_WORKSPACE);
-  log.info({ base: BASE_WORKSPACE_REAL }, "workspace initialized");
+  await fs.mkdir(path.resolve(process.cwd(), "workspace"), { recursive: true });
+  BASE_WORKSPACE_REAL = await fs.realpath(path.resolve(process.cwd(), "workspace"));
+  log.info({ base: BASE_WORKSPACE_REAL, root: process.cwd() }, "workspace initialized");
 }
 
 async function ensureBaseRealpath() {
   if (!BASE_WORKSPACE_REAL) {
     try {
-      BASE_WORKSPACE_REAL = await fs.realpath(BASE_WORKSPACE);
-    } catch (err) {
-      // If workspace doesn't exist yet, create it and realpath
-      await fs.mkdir(BASE_WORKSPACE, { recursive: true });
-      BASE_WORKSPACE_REAL = await fs.realpath(BASE_WORKSPACE);
+      BASE_WORKSPACE_REAL = await fs.realpath(path.resolve(process.cwd(), "workspace"));
+    } catch {
+      await fs.mkdir(path.resolve(process.cwd(), "workspace"), { recursive: true });
+      BASE_WORKSPACE_REAL = await fs.realpath(path.resolve(process.cwd(), "workspace"));
     }
   }
 }
 
+/**
+ * Resolves a path from the project root (CWD) and enforces that the target
+ * stays within the workspace/ boundary. Paths are relative to CWD, so the
+ * agent must use workspace-prefixed paths (e.g. "workspace/tools/decl.json").
+ */
 export async function safePath(relativeOrAbsolute: string): Promise<string> {
   await ensureBaseRealpath();
 
-  const resolved = path.resolve(BASE_WORKSPACE, relativeOrAbsolute);
+  // Resolve from project root (CWD), not from workspace/
+  const resolved = path.resolve(process.cwd(), relativeOrAbsolute);
 
   try {
     const real = await fs.realpath(resolved);
@@ -40,7 +44,6 @@ export async function safePath(relativeOrAbsolute: string): Promise<string> {
     }
     return real;
   } catch (err: any) {
-    // If target doesn't exist yet, allow creation only if parent is inside workspace
     if (err && err.code === "ENOENT") {
       const parent = path.dirname(resolved);
       const parentReal = await fs.realpath(parent).catch(() => null);
@@ -58,7 +61,7 @@ export async function safePath(relativeOrAbsolute: string): Promise<string> {
 async function getDirEntries(
   dirRealpath: string,
   recursive = false,
-  base = BASE_WORKSPACE_REAL,
+  base = process.cwd(),
 ) {
   const entries: Array<{
     name: string;
@@ -120,7 +123,7 @@ export const fsToolImplementations: Record<
     if (!stat || !stat.isDirectory()) throw new Error("Not a directory");
 
     const entries = await getDirEntries(target, recursive);
-    return { path: path.relative(BASE_WORKSPACE_REAL, target), entries };
+    return { path: path.relative(process.cwd(), target), entries };
   },
 
   read_file: async (opts: any) => {
@@ -139,12 +142,12 @@ export const fsToolImplementations: Record<
     const data = await fs.readFile(target);
     if (encoding === "utf8")
       return {
-        path: path.relative(BASE_WORKSPACE_REAL, target),
+        path: path.relative(process.cwd(), target),
         content: data.toString("utf8"),
         size: data.length,
       };
     return {
-      path: path.relative(BASE_WORKSPACE_REAL, target),
+      path: path.relative(process.cwd(), target),
       content: data.toString("base64"),
       size: data.length,
     };

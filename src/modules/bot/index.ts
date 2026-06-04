@@ -175,22 +175,38 @@ function getOrchestrateEvents(ctx: ReplyContext, sessionId: string) {
         await replyWithChunking(ctx, choice.content);
       }
       if (choice.tool_calls) {
-        for (const toolCall of choice.tool_calls) {
-          await replyWithChunking(
-            ctx,
-            `Calling tool: ${toolCall.function.name}`,
-          );
+        const batchNeedsApproval = choice.tool_calls.some((tc: any) => tc.requiresApproval);
+        // If ANY tool in the batch needs approval, skip all "Calling tool" messages.
+        // The approval alert will show the full batch so user knows what will execute.
+        if (!batchNeedsApproval) {
+          for (const toolCall of choice.tool_calls) {
+            await replyWithChunking(ctx, `⚡ \`${toolCall.function.name}\``);
+          }
         }
       }
     },
     async onApprovalRequest(tools: any[]) {
-      const toolNames = tools.map((t: any) => t.function.name).join(", ");
       const keyboard = new InlineKeyboard()
         .text("✅ Approve", `approve_${sessionId}`)
         .text("❌ Reject", `reject_${sessionId}`);
 
+      const toolDetails = tools
+        .map((t: any) => {
+          const args = t.function.arguments;
+          let parsedArgs: string;
+          try {
+            const obj = typeof args === "string" ? JSON.parse(args) : args;
+            parsedArgs = JSON.stringify(obj, null, 2);
+          } catch {
+            parsedArgs = String(args);
+          }
+          const badge = t.requiresApproval ? "🔒" : "⚡";
+          return `${badge} \`${t.function.name}\`\n\`\`\`json\n${parsedArgs}\n\`\`\``;
+        })
+        .join("\n\n");
+
       await ctx.reply(
-        `⚠️ *Security Alert*\n\nThe AI agent is attempting to execute sensitive tools: \`${toolNames}\`.\nDo you want to approve this action?`,
+        `⚠️ *Security Alert*\n\nThe AI agent is requesting to execute:\n\n${toolDetails}\n\n🔒 = requires approval  ⚡ = runs alongside\n\nDo you want to approve this action?`,
         { reply_markup: keyboard, parse_mode: "Markdown" },
       );
     },

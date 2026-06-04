@@ -1,12 +1,33 @@
-const BASE_SYSTEM_PROMPT = 
-  "You are an AI Agent strictly locked inside the 'workspace' directory. You are forbidden to access or modify anything outside of it.\n" +
-  "Read 'guides/soul.md' to understand your persona.";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+function readGuide(filename: string): string {
+  try {
+    return readFileSync(
+      join(process.cwd(), "workspace", "guides", filename),
+      "utf-8",
+    ).trim();
+  } catch {
+    return `[Guide '${filename}' not found]`;
+  }
+}
+
+// Soul and guide index are read once at module load — lightweight, always needed.
+// Detailed guides (extensions.md, etc.) are lazy-loaded by the agent on demand via read_file.
+const SOUL = readGuide("soul.md");
+const GUIDE_INDEX = readGuide("index.md");
+
+const BASE_SYSTEM_PROMPT = `\
+${SOUL}
+
+---
+
+${GUIDE_INDEX}`;
 
 export function getChatPrompt(): string {
   return (
     `${BASE_SYSTEM_PROMPT}\n\n` +
-    "Core rules:\n" +
-    "When (and ONLY when) creating, modifying, or managing system extensions (tools, crons, etc.), you MUST first read 'guides/extensions.md' and strictly use the designated extension management tools."
+    "You are confined to the `workspace` directory.\n"
   );
 }
 

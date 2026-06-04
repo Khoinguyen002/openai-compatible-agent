@@ -3,7 +3,6 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import util from "node:util";
 import {
-  BASE_WORKSPACE,
   TOOL_DECLARATION,
 } from "../../../config/workspace-dirs.js";
 
@@ -14,14 +13,16 @@ export async function getDynamicToolsDeclaration() {
     const content = await fs.readFile(TOOL_DECLARATION, "utf-8");
     const dynamicTools = JSON.parse(content);
 
-    return dynamicTools.map((tool: any) => ({
-      type: tool.type || "function",
-      function: {
-        name: tool.function.name,
-        description: tool.function.description,
-        parameters: tool.function.parameters,
-      },
-    }));
+    return dynamicTools
+      .filter((tool: any) => tool.active !== false) // skip disabled tools
+      .map((tool: any) => ({
+        type: tool.type || "function",
+        function: {
+          name: tool.function.name,
+          description: tool.function.description,
+          parameters: tool.function.parameters,
+        },
+      }));
   } catch (e) {
     return [];
   }
@@ -41,9 +42,13 @@ export async function executeDynamicTool(toolName: string, args: any) {
       return { error: `Tool ${toolName} not found in declaration.json.` };
     }
 
-    const scriptFullPath = path.resolve(BASE_WORKSPACE, targetTool.scriptPath);
+    if (targetTool.active === false) {
+      return { error: `Tool ${toolName} is currently disabled.` };
+    }
 
-    if (!scriptFullPath.startsWith(BASE_WORKSPACE)) {
+    const scriptFullPath = path.resolve(process.cwd(), targetTool.scriptPath);
+
+    if (!scriptFullPath.startsWith(path.resolve(process.cwd(), "workspace"))) {
       return {
         error: "Permission Denied: Script path out of workspace scope.",
       };

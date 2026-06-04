@@ -41,7 +41,7 @@ export type Message =
   | UserMessage
   | AssistantMessage
   | {
-      role: "system";
+      role: "system" | "developer";
       content: string;
       // If "name" is included, it will be prepended like this
       // for non-OpenAI models: `{name}: {content}`

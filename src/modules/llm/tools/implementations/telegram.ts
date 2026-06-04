@@ -1,40 +1,63 @@
 import { config } from "../../../../config/index.js";
 import { logger } from "../../../logger/index.js";
 
+async function sendTelegramMessage(text: string, parseMode?: string) {
+  const chatId = config.TELEGRAM_BOT_CHAT_ID;
+  const body: Record<string, any> = { chat_id: chatId, text };
+  if (parseMode) body.parse_mode = parseMode;
+
+  const response = await fetch(
+    `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!response.ok) {
+    const errData = await response.json();
+    return { ok: false, status: response.status, errData };
+  }
+
+  return { ok: true };
+}
+
 export const telegramTools: Record<string, (args: any) => Promise<any>> = {
-  send_telegram_message: async (args: { text: string }) => {
+  send_telegram_message: async (args: { text?: string; message?: string }) => {
     try {
-      const { text } = args;
-      const chatId = config.TELEGRAM_BOT_CHAT_ID;
+      const text = args.text || args.message;
 
-      const response = await fetch(
-        `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: text,
-            parse_mode: "Markdown",
-          }),
-        },
-      );
+      if (!text) {
+        return { success: false, error: "No message text provided." };
+      }
 
-      if (!response.ok) {
-        const errData = await response.json();
+      // First try with Markdown
+      let result = await sendTelegramMessage(text, "Markdown");
+
+      // If Markdown parse fails (400), fall back to plain text
+      if (!result.ok && result.status === 400) {
+        logger.warn(
+          { error: result.errData },
+          "Markdown parse failed — retrying as plain text",
+        );
+        result = await sendTelegramMessage(text);
+      }
+
+      if (!result.ok) {
         logger.error(
-          { chatId, error: errData },
-          `Failed to send Telegram message via direct API call`,
+          { chatId: config.TELEGRAM_BOT_CHAT_ID, error: result.errData },
+          "Failed to send Telegram message",
         );
         return {
           success: false,
-          error: `Telegram API error ${response.status}: ${JSON.stringify(errData)}`,
+          error: `Telegram API error ${result.status}: ${JSON.stringify(result.errData)}`,
         };
       }
 
       return {
         success: true,
-        message: `Message successfully dispatched to chat ID [${chatId}] via grammY.`,
+        message: `Message successfully dispatched to chat ID [${config.TELEGRAM_BOT_CHAT_ID}] via grammY.`,
       };
     } catch (err: any) {
       return {
@@ -44,3 +67,4 @@ export const telegramTools: Record<string, (args: any) => Promise<any>> = {
     }
   },
 };
+

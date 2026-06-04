@@ -63,21 +63,54 @@ export const callAgent = async ({
         throw new Error("No choices returned from LLM");
       }
 
-      choiceMessage = (result.choices[0] as NonStreamingChoice).message;
-      await onChoice?.(choiceMessage);
+      // Surface provider-level errors early with a clear message
+      const choiceError = (choice as NonStreamingChoice).error;
+      if (choiceError) {
+        throw new Error(
+          `LLM provider error (${choiceError.code}): ${choiceError.message}`,
+        );
+      }
 
+      choiceMessage = (result.choices[0] as NonStreamingChoice).message;
+
+      // Some models return finish_reason='stop' with content=null and no tool_calls.
+      // Guard here to avoid persisting an empty assistant turn that corrupts future
+      // context hydration and triggers the "output must contain text or tool calls" error.
       const hasToolCalls =
         choiceMessage.tool_calls && choiceMessage.tool_calls.length > 0;
+      const hasContent =
+        choiceMessage.content !== null && choiceMessage.content !== "";
+
+      if (!hasToolCalls && !hasContent) {
+        reqLogger.warn(
+          { finish_reason: (choice as NonStreamingChoice).finish_reason },
+          "LLM returned empty content with no tool calls — skipping persist",
+        );
+        break;
+      }
+
+      const requiresApproval = choiceMessage.tool_calls?.some((tc) =>
+        mcpManager.requiresApproval(tc.function.name),
+      );
+
+      // Annotate each tool call so onChoice can distinguish which ones need approval
+      if (choiceMessage.tool_calls) {
+        choiceMessage = {
+          ...choiceMessage,
+          tool_calls: choiceMessage.tool_calls.map((tc) => ({
+            ...tc,
+            requiresApproval: mcpManager.requiresApproval(tc.function.name),
+          })),
+        };
+      }
+
+      await onChoice?.(choiceMessage);
 
       if (!hasToolCalls) break;
 
       reqLogger.trace(
         { toolCalls: choiceMessage.tool_calls },
         "tool calls detected in response",
-      );
-
-      const requiresApproval = choiceMessage.tool_calls?.some((tc) =>
-        mcpManager.requiresApproval(tc.function.name),
       );
 
       if (requiresApproval) {

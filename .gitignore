@@ -17,6 +17,9 @@ dev.db
 workspace/cron/*
 workspace/tools/*
 
+# Agent logs (outside workspace to prevent AI from reading)
+logs/
+
 # Prisma migrations (only track init)
 prisma/migrations/*/
 !prisma/migrations/0001_init/

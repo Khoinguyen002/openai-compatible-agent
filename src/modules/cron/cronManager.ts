@@ -32,7 +32,12 @@ export async function syncCronScheduler(): Promise<void> {
     });
 
     for (const job of cronList) {
-      const { name, expression, prompt } = job;
+      const { name, expression, prompt, active = true } = job;
+
+      if (active === false) {
+        log.info(`[CRON ENGINE] Skipping disabled cron: ${name}`);
+        continue;
+      }
 
       if (!cron.validate(expression)) {
         log.error(`[CRON ENGINE] Error Expression: ${name}`);
@@ -48,7 +53,7 @@ export async function syncCronScheduler(): Promise<void> {
                 role: "system",
                 content: getCronPrompt(),
               },
-              { role: "user", content: prompt },
+              { role: "system", content: prompt },
             ];
 
             const { reply } = await callAgent({
