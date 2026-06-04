@@ -1,6 +1,6 @@
 import type { ContextItem } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
-import { Message, ToolCall } from "./type.js";
+import { Message, ToolCall } from "./types/index.js";
 
 /**
  * Loads all prior context_items for the session, applies pruning if needed,

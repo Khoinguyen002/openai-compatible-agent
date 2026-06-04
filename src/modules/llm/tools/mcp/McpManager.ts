@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import mcpConfig from "./mcp-config.json";
 import { childLogger } from "../../../logger/index.js";
-import { Tool } from "../../orchestrator/type.js";
+import { Tool } from "../../orchestrator/types/index.js";
 
 const log = childLogger({ module: "McpManager" });
 

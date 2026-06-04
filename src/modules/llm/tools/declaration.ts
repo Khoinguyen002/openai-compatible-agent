@@ -1,5 +1,5 @@
 import z from "zod";
-import { Tool } from "../orchestrator/type.js";
+import { Tool } from "../orchestrator/types/index.js";
 
 export const toolDeclarations = [
   {

@@ -3,7 +3,13 @@ import { logger } from "../../logger/index.js";
 import { executeDynamicTool } from "../tools/helpers.js";
 import { mcpManager, toolImplementations } from "../tools/index.js";
 import { sendLLMRequest } from "./pure-llm.js";
-import { Message, NonStreamingChoice, Tool, ToolMessage, ToolCall } from "./type.js";
+import {
+  Message,
+  NonStreamingChoice,
+  Tool,
+  ToolMessage,
+  ToolCall,
+} from "./types/index.js";
 
 export const callAgent = async ({
   messages,

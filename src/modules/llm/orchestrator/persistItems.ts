@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { childLogger } from "../../logger/index.js";
-import { NonStreamingChoice, ToolMessage, UserMessage } from "./type.js";
+import { NonStreamingChoice, ToolMessage, UserMessage } from "./types/index.js";
 
 export async function persistItems(
   sessionId: string,

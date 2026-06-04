@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import fs from "node:fs/promises";
 import { callAgent } from "../llm/orchestrator/pure-agent.js";
-import { Message } from "../llm/orchestrator/type.js";
+import { Message } from "../llm/orchestrator/types/index.js";
 import { childLogger } from "../logger/index.js";
 import { CRON_DECLARATION } from "../../config/workspace-dirs.js";
 import { getCronPrompt } from "../llm/prompts/index.js";

@@ -2,7 +2,7 @@ import { config } from "../../../config/index.js";
 import { childLogger } from "../../logger/index.js";
 import { hydrateContext } from "./hydrate.js";
 import { persistItems } from "./persistItems.js";
-import { Message } from "./type.js";
+import { Message } from "./types/index.js";
 import { getTools } from "../tools/index.js";
 import { callAgent, executeToolCalls } from "./pure-agent.js";
 import { getChatPrompt } from "../prompts/index.js";

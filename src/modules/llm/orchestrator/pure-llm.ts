@@ -1,5 +1,5 @@
 import { config } from "../../../config/index.js";
-import { Request, Response } from "./type.js";
+import { Request, Response } from "./types/index.js";
 
 const url = "https://openrouter.ai/api/v1/chat/completions";
 const options = {
