@@ -47,14 +47,20 @@ type ReplyContext = {
 };
 
 async function replyWithChunking(ctx: ReplyContext, message: string) {
-  if (message.length <= TELEGRAM_MESSAGE_LIMIT) {
-    await ctx
-      .reply(message, { parse_mode: "Markdown" })
-      .catch(() => ctx.reply(message));
+  const normalizedMessage = message.trim();
+
+  if (!normalizedMessage) {
     return;
   }
 
-  const chunks = chunkText(message, TELEGRAM_MESSAGE_LIMIT);
+  if (normalizedMessage.length <= TELEGRAM_MESSAGE_LIMIT) {
+    await ctx
+      .reply(normalizedMessage, { parse_mode: "Markdown" })
+      .catch(() => ctx.reply(normalizedMessage));
+    return;
+  }
+
+  const chunks = chunkText(normalizedMessage, TELEGRAM_MESSAGE_LIMIT);
 
   for (const chunk of chunks) {
     await ctx.reply(chunk);
@@ -140,7 +146,10 @@ bot.on("message:text", async (ctx) => {
         clearInterval(typingInterval);
       }
     } catch (err: any) {
-      if (err.message && err.message.includes("Please press Approve or Reject")) {
+      if (
+        err.message &&
+        err.message.includes("Please press Approve or Reject")
+      ) {
         await ctx.reply(err.message).catch(() => undefined);
         return;
       }
@@ -179,7 +188,7 @@ function getOrchestrateEvents(ctx: ReplyContext, sessionId: string) {
       const keyboard = new InlineKeyboard()
         .text("✅ Approve", `approve_${sessionId}`)
         .text("❌ Reject", `reject_${sessionId}`);
-      
+
       await ctx.reply(
         `⚠️ *Security Alert*\n\nThe AI agent is attempting to execute sensitive tools: \`${toolNames}\`.\nDo you want to approve this action?`,
         { reply_markup: keyboard, parse_mode: "Markdown" },
@@ -201,8 +210,15 @@ bot.on("callback_query:data", async (ctx) => {
   if (!ctx.from) return;
   const userId = BigInt(ctx.from.id);
 
-  await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {});
-  await ctx.reply(isApprove ? "✅ Approved! Executing the requested tools..." : "❌ Tool execution rejected.");
+  await ctx
+    .editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } })
+    .catch(() => {});
+
+  await ctx.reply(
+    isApprove
+      ? "✅ Approved! Executing the requested tools..."
+      : "❌ Tool execution rejected.",
+  );
 
   sessionQueue.enqueue(sessionId, async () => {
     try {
@@ -230,7 +246,9 @@ bot.on("callback_query:data", async (ctx) => {
         sessionId,
         userId: userId.toString(),
       });
-      await ctx.reply("Sorry, something went wrong while resuming.").catch(() => undefined);
+      await ctx
+        .reply("Sorry, something went wrong while resuming.")
+        .catch(() => undefined);
     }
   });
 
