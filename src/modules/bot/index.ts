@@ -12,6 +12,7 @@ import {
   rotateSession,
 } from "../llm/orchestrator/session.js";
 import { orchestrate } from "../llm/orchestrator/index.js";
+import { prisma } from "../../db/client.js";
 
 const log = childLogger({ module: "bot" });
 const TELEGRAM_MESSAGE_LIMIT = 4096;
@@ -42,9 +43,33 @@ function chunkText(text: string, limit: number) {
 type ReplyContext = {
   reply: (
     text: string,
-    options?: { parse_mode?: "Markdown"; reply_markup?: InlineKeyboard },
+    options?: { parse_mode?: "Markdown" | "HTML"; reply_markup?: InlineKeyboard },
   ) => Promise<unknown>;
 };
+
+function sanitizeTelegramHtml(text: string): string {
+  const supportedTags = [
+    'b', 'strong', 'i', 'em', 'code', 's', 'strike', 'del', 'u', 'pre', 
+    'a', 'span', 'tg-spoiler', 'tg-emoji', 'blockquote'
+  ];
+  
+  const validTags: string[] = [];
+  let sanitized = text.replace(/<\/?([a-zA-Z0-9-]+)[^>]*>/g, (match, tagName) => {
+    if (supportedTags.includes(tagName.toLowerCase())) {
+      validTags.push(match);
+      return `__VALID_TAG_${validTags.length - 1}__`;
+    }
+    return match;
+  });
+
+  sanitized = sanitized.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  sanitized = sanitized.replace(/__VALID_TAG_(\d+)__/g, (match, index) => {
+    return validTags[parseInt(index)];
+  });
+
+  return sanitized;
+}
 
 async function replyWithChunking(ctx: ReplyContext, message: string) {
   const normalizedMessage = message.trim();
@@ -54,16 +79,21 @@ async function replyWithChunking(ctx: ReplyContext, message: string) {
   }
 
   if (normalizedMessage.length <= TELEGRAM_MESSAGE_LIMIT) {
+    const safeHtml = sanitizeTelegramHtml(normalizedMessage);
     await ctx
-      .reply(normalizedMessage, { parse_mode: "Markdown" })
-      .catch(() => ctx.reply(normalizedMessage));
+      .reply(safeHtml, { parse_mode: "HTML" })
+      .catch((e) => {
+        log.error({ err: e }, "Failed to send HTML formatted message, falling back to plain text");
+        return ctx.reply(normalizedMessage);
+      });
     return;
   }
 
   const chunks = chunkText(normalizedMessage, TELEGRAM_MESSAGE_LIMIT);
 
   for (const chunk of chunks) {
-    await ctx.reply(chunk);
+    const safeHtml = sanitizeTelegramHtml(chunk);
+    await ctx.reply(safeHtml, { parse_mode: "HTML" }).catch(() => ctx.reply(chunk));
   }
 }
 
@@ -89,19 +119,148 @@ bot.command("newchat", async (ctx) => {
   );
 });
 
-// --- Main message handler ---
-bot.on("message:text", async (ctx) => {
-  const requestId = randomUUID();
-  const reqLog = log.child({ requestId });
-
-  if (!ctx.from) {
-    reqLog.warn("message without sender — ignoring");
-    return;
+// --- /prj_create command ---
+bot.command("prj_create", async (ctx) => {
+  if (!ctx.from) return;
+  const userId = BigInt(ctx.from.id);
+  const match = ctx.message?.text?.match(/^\/prj_create\s+(.+)$/);
+  if (!match) {
+    return ctx.reply("Usage: /prj_create <title> | <description>");
   }
 
+  const [title, ...descParts] = match[1].split("|").map(s => s.trim());
+  const description = descParts.join("|") || null;
+
+  if (!title) {
+    return ctx.reply("Title is required.");
+  }
+
+  await syncUser(ctx.from);
+  const project = await prisma.project.create({
+    data: {
+      userId,
+      title,
+      description,
+    }
+  });
+
+  await ctx.reply(`✅ Project created: <b>${project.title}</b>\nID: <code>${project.id}</code>\nUse <code>/prj_join ${project.id}</code> to join.`, { parse_mode: "HTML" });
+});
+
+// --- /prj_list command ---
+bot.command("prj_list", async (ctx) => {
+  if (!ctx.from) return;
+  const userId = BigInt(ctx.from.id);
+  
+  const projects = await prisma.project.findMany({
+    where: { userId }
+  });
+
+  if (projects.length === 0) {
+    return ctx.reply("You don't have any projects yet.");
+  }
+
+  const list = projects.map(p => `🔹 <b>${p.title}</b>\nID: <code>${p.id}</code>\nDesc: ${p.description || "N/A"}`).join("\n\n");
+  await ctx.reply(`<b>Your Projects:</b>\n\n${list}`, { parse_mode: "HTML" });
+});
+
+// --- /prj_join command ---
+bot.command("prj_join", async (ctx) => {
+  if (!ctx.from) return;
+  const userId = BigInt(ctx.from.id);
+  const chatId = BigInt(ctx.chat.id);
+  const match = ctx.message?.text?.match(/^\/prj_join\s+(.+)$/);
+  
+  if (!match) {
+    return ctx.reply("Usage: /prj_join <project_id>");
+  }
+  const projectId = match[1].trim();
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, userId }
+  });
+
+  if (!project) {
+    return ctx.reply("Project not found or you don't have access to it.");
+  }
+
+  const sessionId = await resolveOrCreateSession(chatId, userId);
+  await prisma.chatSession.update({
+    where: { id: sessionId },
+    data: { projectId }
+  });
+
+  await ctx.reply(`✅ Joined project: <b>${project.title}</b>`, { parse_mode: "HTML" });
+});
+
+// --- /prj_status command ---
+bot.command("prj_status", async (ctx) => {
+  if (!ctx.from) return;
+  const userId = BigInt(ctx.from.id);
+  const chatId = BigInt(ctx.chat.id);
+
+  const sessionId = await resolveOrCreateSession(chatId, userId);
+  const session = await prisma.chatSession.findUnique({
+    where: { id: sessionId },
+    include: { project: true }
+  });
+
+  if (session?.project) {
+    await ctx.reply(`🔍 You are currently in project: <b>${session.project.title}</b>\n<i>${session.project.description || "No description"}</i>\n\nUse /prj_out to leave.`, { parse_mode: "HTML" });
+  } else {
+    await ctx.reply("You are not currently in any project. You are in general chat. Use /prj_list to see available projects.");
+  }
+});
+
+// --- /prj_out command ---
+bot.command("prj_out", async (ctx) => {
+  if (!ctx.from) return;
+  const userId = BigInt(ctx.from.id);
+  const chatId = BigInt(ctx.chat.id);
+
+  const sessionId = await resolveOrCreateSession(chatId, userId);
+  await prisma.chatSession.update({
+    where: { id: sessionId },
+    data: { projectId: null }
+  });
+
+  await ctx.reply(`🚪 Left the project. You are back to general chat.`);
+});
+
+// --- Main message handler with buffering ---
+const messageBuffers = new Map<bigint, {
+  text: string[];
+  timer: NodeJS.Timeout;
+}>();
+
+bot.on("message:text", async (ctx) => {
+  if (!ctx.from) return;
+  
   const userId = BigInt(ctx.from.id);
   const chatId = BigInt(ctx.chat.id);
   const text = ctx.message.text.trim();
+
+  if (!text) return;
+
+  const existingBuffer = messageBuffers.get(userId);
+  if (existingBuffer) {
+    clearTimeout(existingBuffer.timer);
+    existingBuffer.text.push(text);
+  } else {
+    messageBuffers.set(userId, { text: [text], timer: setTimeout(() => {}, 0) });
+  }
+
+  const buffer = messageBuffers.get(userId)!;
+  buffer.timer = setTimeout(async () => {
+    messageBuffers.delete(userId);
+    const fullText = buffer.text.join("\n\n");
+    await processUserMessage(ctx, userId, chatId, fullText);
+  }, 1000); // Wait 1 second for any remaining chunks
+});
+
+async function processUserMessage(ctx: any, userId: bigint, chatId: bigint, text: string) {
+  const requestId = randomUUID();
+  const reqLog = log.child({ requestId });
 
   reqLog.info(
     {
@@ -166,7 +325,7 @@ bot.on("message:text", async (ctx) => {
         .catch(() => undefined);
     }
   });
-});
+}
 
 function getOrchestrateEvents(ctx: ReplyContext, sessionId: string) {
   return {

@@ -22,6 +22,7 @@ dev.db
 workspace/skills/cron/declaration.json
 workspace/skills/tools/declaration.json
 workspace/skills/tools/implementations/*
+workspace/skills/memory/data/*
 
 # Agent logs (outside workspace to prevent AI from reading)
 logs/

@@ -29,6 +29,7 @@ src/
     │   ├── orchestrator/    # Agent loop, context hydration, session management, pruning
     │   ├── prompts/         # System prompt builder (async — injects memory index)
     │   └── tools/           # Built-in tool declarations, MCP manager, dynamic tool runner
+    ├── vector/              # Local LanceDB + Transformers vector memory system
     ├── export/              # Conversation export service (writes JSON to exports/)
     ├── queue/               # Per-session message queue (prevents concurrent agent runs)
     ├── cron/                # Prompt-based cron scheduler
@@ -63,6 +64,9 @@ The agent operates via a **skills-based workspace** under `workspace/skills/`. E
 
 ### Structured Memory
 Agent-managed persistent storage at `workspace/skills/memory/data/`. Each namespace is a schema-validated JSON file (100 KB limit). A memory index is automatically injected into every system prompt so the agent always knows what's been stored.
+
+### Project & Vector Memory (RAG)
+Projects allow users to group multiple ChatSessions. A local LanceDB vector database (`.lancedb`) runs natively with `@xenova/transformers` (`all-MiniLM-L6-v2`) to provide Long-Term Memory. The agent uses `store_project_memory` and `search_project_memory` tools to remember and recall dense project context semantically without overwhelming the LLM context window.
 
 ### MCP Integration
 Four MCP servers run alongside the agent:

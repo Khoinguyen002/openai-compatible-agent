@@ -18,7 +18,10 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
 
   // Agent behavior
-  MODEL_ID: z.string().default("deepseek/deepseek-r1"),
+  MODEL_ID: z.string().default("openai/gpt-oss-120b:free"),
+  EMBEDDING_MODEL_ID: z
+    .string()
+    .default("nvidia/llama-nemotron-embed-vl-1b-v2:free"),
   MODEL_CONTEXT_WINDOW_TOKENS: z.coerce
     .number()
     .int()
@@ -27,7 +30,7 @@ const schema = z.object({
   MAX_TOOL_ROUNDS: z.coerce.number().int().positive().default(10),
 
   // Rate limiting
-  MAX_DAILY_REQUESTS_PER_USER: z.coerce.number().int().positive().default(100),
+  MAX_DAILY_REQUESTS_PER_USER: z.coerce.number().int().positive().default(1000),
   MIN_REQUEST_INTERVAL_MS: z.coerce.number().int().nonnegative().default(3000),
 
   // Session lifecycle

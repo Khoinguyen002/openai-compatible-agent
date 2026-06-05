@@ -6,6 +6,7 @@ import { Message } from "./types/index.js";
 import { getTools } from "../tools/index.js";
 import { callAgent, executeToolCalls } from "./pure-agent.js";
 import { getChatPrompt } from "../prompts/index.js";
+import { prisma } from "../../../db/client.js";
 
 const log = childLogger({ module: "orchestrator" });
 
@@ -56,7 +57,7 @@ export async function orchestrate(
     ) {
       let toolResults;
       if (resumeAction === "approve") {
-        toolResults = await executeToolCalls(lastMsg.tool_calls, reqLog);
+        toolResults = await executeToolCalls(lastMsg.tool_calls, reqLog, { sessionId });
       } else {
         toolResults = lastMsg.tool_calls.map((tc: any) => ({
           role: "tool" as const,
@@ -89,10 +90,20 @@ export async function orchestrate(
 
   const getFullHistory = async () => {
     const latestHistory = await hydrateContext(sessionId);
+    const chatSession = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: { project: true }
+    });
+
+    let sysPrompt = await getChatPrompt();
+    if (chatSession?.project) {
+      sysPrompt += `\n\n<b>PROJECT CONTEXT ACTIVE</b>: You are currently joined to Project: "${chatSession.project.title}" - ${chatSession.project.description || 'No description'}.\nIMPORTANT: This "Project" refers to a Vector Database memory space, NOT a local codebase directory. Your local codebase is always the global 'workspace/' directory. If the user asks you to save, learn, or memorize documents, text, rules, or decisions for this Project, you MUST use the 'store_project_knowledge' tool. NEVER use 'write_file' to save project knowledge or READMEs unless the user explicitly commands you to "write to the local file system". To recall semantic context, use 'search_project_knowledge'. Do not confuse the Project memory with your codebase file system.`;
+    }
+
     return [
       {
         role: "system",
-        content: await getChatPrompt(),
+        content: sysPrompt,
       },
       ...latestHistory,
     ] satisfies Message[];
@@ -111,6 +122,7 @@ export async function orchestrate(
         return persistItems(sessionId, senderUserId, toolCallResults, reqLog);
       },
     },
+    context: { sessionId },
   });
 
   if (results.needsApproval && onApprovalRequest) {

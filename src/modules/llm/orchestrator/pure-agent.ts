@@ -17,6 +17,7 @@ export const callAgent = async ({
   reqLogger,
   events,
   maxTurns = 10,
+  context,
 }: {
   messages: Message[] | (() => Promise<Message[]> | Message[]);
   tools: Tool[];
@@ -28,6 +29,7 @@ export const callAgent = async ({
     ) => Promise<void> | void;
   };
   maxTurns?: number;
+  context?: { sessionId: string };
 }) => {
   let turn = 0;
   let totalToolCalls = 0;
@@ -152,6 +154,7 @@ export const callAgent = async ({
       const toolResults = await executeToolCalls(
         choiceMessage.tool_calls ?? [],
         reqLogger,
+        context
       );
       totalToolCalls += toolResults.length;
       await onToolCallSuccess?.(toolResults);
@@ -183,6 +186,7 @@ export const callAgent = async ({
 export async function executeToolCalls(
   toolCalls: ToolCall[],
   reqLogger: ReturnType<typeof logger.child<never>>,
+  context?: { sessionId: string }
 ): Promise<ToolMessage[]> {
   return Promise.all<ToolMessage>(
     toolCalls.map(async (tc) => {
@@ -212,7 +216,7 @@ export async function executeToolCalls(
         if (toolName in toolImplementations) {
           const executeFn =
             toolImplementations[toolName as keyof typeof toolImplementations];
-          toolResult = await executeFn(toolArgs);
+          toolResult = await executeFn(toolArgs, context);
         } else if (mcpManager && mcpManager.hasTool(toolName)) {
           toolResult = await mcpManager.handleToolCall(
             toolName,
