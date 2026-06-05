@@ -20,6 +20,9 @@ workspace/tools/*
 # Agent logs (outside workspace to prevent AI from reading)
 logs/
 
+# Exported conversation data (for prompt optimization — never commit)
+exports/
+
 # Prisma migrations (only track init)
 prisma/migrations/*/
 !prisma/migrations/0001_init/

@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
+    "export": "tsx src/export-cli.ts",
     "setup": "cp -n .env.example .env && echo 'Created .env — fill in your values before running the app'",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
