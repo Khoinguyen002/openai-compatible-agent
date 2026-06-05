@@ -33,7 +33,7 @@ export async function executeDynamicTool(toolName: string, args: any) {
     const content = await fs.readFile(TOOL_DECLARATION, "utf-8");
     const dynamicTools = JSON.parse(content);
 
-    // Tìm tool dựa theo cấu trúc lồng của OpenRouter schema
+    // Look up the tool by name using the nested OpenRouter schema structure
     const targetTool = dynamicTools.find(
       (t: any) => t.function?.name === toolName,
     );

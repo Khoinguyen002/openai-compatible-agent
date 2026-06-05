@@ -1,62 +1,132 @@
 # OpenRouter Telegram Agent
 
-A stateful, AI-powered Telegram bot built with the OpenRouter Agent SDK. This codebase is designed for robustness, featuring rate limiting, session orchestration, and multiple integrated tools.
+A stateful, self-evolving AI agent integrated into Telegram via OpenRouter. Built for robustness with session orchestration, rate limiting, persistent structured memory, a skills-based workspace, and a dynamic extension system (tools + cron jobs).
 
-## Core Tech Stack & Libraries
+## Core Tech Stack
 
 - **Language**: TypeScript (Node.js >= 20)
-- **Bot Framework**: [grammY](https://grammy.dev/) - Fast, powerful, and easy to use. Supports both Webhooks (for production) and Long-polling (for development).
-- **AI/LLM**: 
-  - `@openrouter/agent` for model connection and invocation.
-  - `@modelcontextprotocol/sdk` (MCP SDK).
-  - `@tavily/core` for search capabilities.
-- **Database**: Prisma ORM + `better-sqlite3`. Lightweight yet fully featured.
-- **Logging & Monitoring**: 
-  - `pino` & `pino-pretty` for structured and beautiful console logging.
-  - `@sentry/node` for bug tracking in production.
-- **Others**: `zod` for validation, `node-cron` / timers for scheduling, `p-retry` for resilience.
+- **Bot Framework**: [grammY](https://grammy.dev/) — supports both Webhooks (production) and Long-polling (development)
+- **AI / LLM**: OpenRouter API + `@modelcontextprotocol/sdk` (MCP) for dynamic tool integration
+- **Search**: Tavily MCP server (web search, extract, crawl, research)
+- **File System**: `@modelcontextprotocol/server-filesystem` MCP — full read/write access to `workspace/`
+- **Database**: Prisma ORM + `better-sqlite3` (SQLite)
+- **Logging & Monitoring**: `pino` / `pino-pretty` for structured logging, `@sentry/node` for production error tracking
+- **Validation**: `zod`
+- **Scheduling**: `node-cron` for prompt-based cron jobs
 
-## Directory Structure (`src/`)
+## Directory Structure
 
-- `main.ts`: Application entry point. Initializes Sentry, sets up `fsTools` workspace, schedules background jobs (rate limit reset, idle session cleanup), and starts the bot (via webhook or long-polling).
-- `config/`: Configuration management, parsing `.env` files.
-- `db/`: Prisma client initialization (`client.ts`). Note: the actual schema is located at the project root (`prisma/`).
-- `modules/`: Core domain logic, separated into clean modules:
-  - `bot/`: Telegram bot setup, command/message handling, and long text chunking (to bypass Telegram's 4096 character limit).
-  - `gateway/`: API Gateway layer handling user synchronization (`userSync.ts`), rate limiting (`rateLimit.ts`), and Webhook verification (`verification.ts`).
-  - `llm/`: The AI brain. Contains the orchestrator (model invocation, session handling), tools (e.g., `fsTools`), and session management (`session.ts`).
-  - `queue/`: `sessionQueue.ts` handles message queueing to prevent overwhelming the bot when users spam messages.
-  - `logger/`, `sentry/`, `tavily/`, `cron/`: Setup and integrations for various services.
-- `types/`: Shared TypeScript typings.
+```
+src/
+├── main.ts                  # Entry point — startup, background jobs, bot/webhook init
+├── config/                  # Env config (zod-validated), workspace path constants
+├── db/                      # Prisma client
+├── export-cli.ts            # CLI to export conversation data for prompt optimization
+└── modules/
+    ├── bot/                 # Telegram bot — commands, message handler, chunking
+    ├── gateway/             # Rate limiting, user sync, webhook verification
+    ├── llm/
+    │   ├── orchestrator/    # Agent loop, context hydration, session management, pruning
+    │   ├── prompts/         # System prompt builder (async — injects memory index)
+    │   └── tools/           # Built-in tool declarations, MCP manager, dynamic tool runner
+    ├── export/              # Conversation export service (writes JSON to exports/)
+    ├── queue/               # Per-session message queue (prevents concurrent agent runs)
+    ├── cron/                # Prompt-based cron scheduler
+    ├── logger/              # Pino logger setup
+    └── sentry/              # Sentry initialization
 
-## How to Run & Develop
+workspace/
+├── guides/
+│   ├── soul.md              # Agent identity, behavior rules, built-in tool reference
+│   └── index.md             # Skill guide index
+└── skills/
+    ├── memory/
+    │   ├── guide.md         # Memory skill docs (API, format, naming rules)
+    │   └── data/            # Persistent memory namespaces (*.json, gitignored)
+    ├── tools/
+    │   ├── guide.md         # Custom tool skill docs (JS template, safety rules)
+    │   └── implementations/ # Dynamic tool scripts (*.js, registered at runtime)
+    └── cron/
+        └── guide.md         # Cron skill docs (prompt-only model, safety rules)
+```
 
-1. **Setup Environment**:
-   ```bash
-   npm run setup
-   # Or manually copy .env.example to .env and fill in your keys
-   ```
+## Key Features
 
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
+### Agent Skills System
+The agent operates via a **skills-based workspace** under `workspace/skills/`. Each skill is a self-contained directory with a `guide.md` the agent reads on demand:
 
-3. **Database Setup (SQLite)**:
-   ```bash
-   npm run db:push
-   npm run db:generate
-   ```
+| Skill | What it does |
+|---|---|
+| **Memory** | Persistent JSON namespaces (`memory_write/read/delete/list`) — user profiles, rules, cron state, etc. |
+| **Tools** | Register custom JS tools at runtime (`register_tool`) — sandboxed Node.js child process execution |
+| **Cron** | Schedule prompt-based recurring tasks (`register_cron`) — LLM executes on schedule, notifies via Telegram |
 
-4. **Run Development Mode** (Long-polling, hot-reload):
-   ```bash
-   npm run dev
-   ```
+### Structured Memory
+Agent-managed persistent storage at `workspace/skills/memory/data/`. Each namespace is a schema-validated JSON file (100 KB limit). A memory index is automatically injected into every system prompt so the agent always knows what's been stored.
 
-5. **Build & Run Production** (Webhook mode):
-   ```bash
-   npm run build
-   npm run start
-   ```
+### MCP Integration
+Four MCP servers run alongside the agent:
+- `tavily-mcp` — web search, content extraction, deep research
+- `local-filesystem` — full workspace read/write
+- `web-fetch` — direct URL fetching
+- `code-runner` — sandboxed code execution (Docker)
 
-*Note:* Use `npm run db:studio` to view and manage your database graphically.
+### Conversation Export
+Export session data to structured JSON files for prompt optimization pipelines:
+```bash
+npm run export              # Export active session per chat
+npm run export -- --all     # Export every session in the DB
+npm run export -- --chat <id>  # Export all sessions for a specific chat
+```
+Output: `exports/session_<uuid>.json` (gitignored)
+
+## How to Run
+
+### 1. Setup environment
+```bash
+npm run setup
+# Or: cp .env.example .env && fill in your keys
+```
+
+### 2. Install dependencies
+```bash
+npm install
+```
+
+### 3. Database setup
+```bash
+npm run db:push
+npm run db:generate
+```
+
+### 4. Development (long-polling, hot-reload)
+```bash
+npm run dev
+```
+
+### 5. Production (webhook mode)
+```bash
+npm run build
+npm run start
+```
+
+### Useful commands
+```bash
+npm run db:studio    # Browse and manage the database via Prisma Studio
+npm run typecheck    # Run TypeScript type checking without building
+npm run export       # Export conversation data to exports/
+```
+
+## Environment Variables
+
+See `.env.example` for the full list. Key variables:
+
+| Variable | Description |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Your Telegram bot token |
+| `OPENROUTER_API_KEY` | OpenRouter API key |
+| `MODEL_ID` | Model to use (e.g. `deepseek/deepseek-r1`) |
+| `DATABASE_URL` | SQLite file path (e.g. `file:./dev.db`) |
+| `TELEGRAM_WEBHOOK_URL` | Public HTTPS URL for webhook (production only) |
+| `IDLE_TIMEOUT_HOURS` | Session idle expiry in hours (default: 24) |
+| `MAX_DAILY_REQUESTS_PER_USER` | Daily rate limit per user (default: 100) |

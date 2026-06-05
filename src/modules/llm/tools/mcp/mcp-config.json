@@ -11,8 +11,9 @@
         "run",
         "--rm",
         "-i",
+        "--platform", "linux/amd64",
         "-v",
-        "/home/khoi-nguyen/Documents/openai-compatible-agent/workspace:/agent-workspace",
+        "${WORKSPACE_DIR}:/agent-workspace",
         "formulahendry/mcp-server-code-runner"
       ],
       "requireApproval": true
@@ -21,18 +22,18 @@
       "command": "npx",
       "args": ["-y", "tavily-mcp@latest"],
       "env": {
-        "TAVILY_API_KEY": "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"
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
       },
       "requireApproval": true
     },
     "local-filesystem": {
       "command": "npx",
       "args": [
-        "-y", 
+        "-y",
         "@modelcontextprotocol/server-filesystem",
-        "/home/khoi-nguyen/Documents/openai-compatible-agent/workspace" 
+        "${WORKSPACE_DIR}"
       ],
-      "requireApproval": true
+      "requireApproval": false
     }
   }
 }

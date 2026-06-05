@@ -10,11 +10,33 @@ const options = {
   },
 };
 
-export const sendLLMRequest = async (request: Request) => {
-  const response = await fetch(url, {
+export interface LLMCallResult {
+  response: Response;
+  durationMs: number;
+}
+
+export const sendLLMRequest = async (request: Request): Promise<LLMCallResult> => {
+  const startedAt = Date.now();
+
+  const httpResponse = await fetch(url, {
     ...options,
     body: JSON.stringify(request),
   });
 
-  return (await response.json()) as Response;
+  if (!httpResponse.ok) {
+    let body = "";
+    try {
+      body = await httpResponse.text();
+    } catch {
+      body = "(unreadable)";
+    }
+    throw new Error(
+      `LLM HTTP ${httpResponse.status} ${httpResponse.statusText}: ${body.slice(0, 300)}`,
+    );
+  }
+
+  const response = (await httpResponse.json()) as Response;
+  const durationMs = Date.now() - startedAt;
+
+  return { response, durationMs };
 };

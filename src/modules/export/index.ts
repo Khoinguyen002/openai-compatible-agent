@@ -65,6 +65,48 @@ export async function exportChat(
   return results;
 }
 
+/**
+ * Export ALL sessions merged into a single JSONL file.
+ * One JSON object per line — easy to grep and trace across sessions.
+ * Output: exports/all_sessions_<timestamp>.jsonl
+ */
+export async function exportAllMerged(): Promise<{ filepath: string; sessionCount: number; turnCount: number }> {
+  await mkdir(EXPORT_DIR, { recursive: true });
+
+  const allSessions = await prisma.chatSession.findMany({
+    orderBy: { createdAt: "asc" },
+    include: { contextItems: { orderBy: { sequence: "asc" } } },
+  });
+
+  const systemPrompt = await getChatPrompt();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const filename = `all_sessions_${timestamp}.jsonl`;
+  const filepath = join(EXPORT_DIR, filename);
+
+  let totalTurns = 0;
+  const lines: string[] = [];
+
+  for (const session of allSessions) {
+    const payload: ConversationExport = {
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+      systemPrompt,
+      session: sessionToExport(session),
+    };
+    lines.push(JSON.stringify(payload));
+    totalTurns += session.contextItems.length;
+  }
+
+  await writeFile(filepath, lines.join("\n") + "\n", "utf-8");
+
+  log.info(
+    { filepath, sessionCount: allSessions.length, turnCount: totalTurns },
+    "merged export written",
+  );
+
+  return { filepath, sessionCount: allSessions.length, turnCount: totalTurns };
+}
+
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
@@ -81,7 +123,7 @@ async function writeSessionFile(session: SessionWithItems): Promise<ExportResult
   const payload: ConversationExport = {
     version: "1.0",
     exportedAt: new Date().toISOString(),
-    systemPrompt: getChatPrompt(),
+    systemPrompt: await getChatPrompt(),
     session: sessionToExport(session),
   };
 

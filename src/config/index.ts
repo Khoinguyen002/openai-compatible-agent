@@ -47,6 +47,9 @@ const schema = z.object({
   // File system tooling
   WORKSPACE_DIR: z.string().default("workspace"),
   FS_MAX_FILE_BYTES: z.coerce.number().int().positive().optional(),
+
+  // MCP server keys (optional — only required when the corresponding MCP server is enabled)
+  TAVILY_API_KEY: z.string().optional(),
 });
 
 function loadConfig() {

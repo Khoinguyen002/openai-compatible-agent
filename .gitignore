@@ -1,6 +1,11 @@
 node_modules
 dist/
 
+# Override global gitignore — track .agents/ in this project
+!.agents
+!.agents/
+
+
 # Database files
 dev.db
 *.db
@@ -14,8 +19,9 @@ dev.db
 *.env
 
 # Workspace dynamic directories
-workspace/cron/*
-workspace/tools/*
+workspace/skills/cron/declaration.json
+workspace/skills/tools/declaration.json
+workspace/skills/tools/implementations/*
 
 # Agent logs (outside workspace to prevent AI from reading)
 logs/

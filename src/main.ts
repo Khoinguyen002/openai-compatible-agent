@@ -10,33 +10,41 @@ import { prisma } from "./db/client.js";
 async function main() {
   initSentry();
 
-  // Initialize workspace for agent-managed files/tools (if enabled)
+  // Initialize workspace dirs
   try {
     const { initWorkspace } =
       await import("./modules/llm/tools/implementations/fsTools.js");
     await initWorkspace();
   } catch (err) {
-    // Non-fatal: log and continue
-    logger.warn({ err }, "fsTools initialization skipped or failed");
+    logger.warn({ err }, "workspace init skipped or failed");
+  }
+
+  // Ensure memory data directory exists
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    const { MEMORY_DATA_DIR } = await import("./config/workspace-dirs.js");
+    await mkdir(MEMORY_DATA_DIR, { recursive: true });
+  } catch (err) {
+    logger.warn({ err }, "memory data dir init skipped or failed");
   }
 
   logger.info(
     { env: config.NODE_ENV, model: config.MODEL_ID },
-    "starting Telegram AI Agent",
+    "agent starting",
   );
 
   // --- Schedule recurring jobs ---
   scheduleJobs();
 
   if (config.NODE_ENV === "production" && config.TELEGRAM_WEBHOOK_URL) {
-    // Production: webhook mode
     await startWebhookServer();
   } else {
-    // Development: long polling (no HTTPS or public URL required)
-    logger.info("starting in long-polling mode (development)");
     await bot.start({
       onStart: (info) =>
-        logger.info({ username: info.username }, "bot started (long polling)"),
+        logger.info(
+          { username: info.username, mode: "long-polling", env: config.NODE_ENV, model: config.MODEL_ID },
+          "bot ready",
+        ),
     });
   }
 }
@@ -119,7 +127,7 @@ function scheduleJobs() {
     15 * 60 * 1000,
   );
 
-  logger.debug("background jobs scheduled");
+  logger.trace("background jobs scheduled");
 }
 
 // --- Graceful shutdown ---

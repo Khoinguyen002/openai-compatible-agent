@@ -2,9 +2,13 @@ import path from "node:path";
 
 export const TOOL_DECLARATION = path.resolve(
   process.cwd(),
-  "workspace/tools/declaration.json",
+  "workspace/skills/tools/declaration.json",
 );
 export const CRON_DECLARATION = path.resolve(
   process.cwd(),
-  "workspace/cron/declaration.json",
+  "workspace/skills/cron/declaration.json",
+);
+export const MEMORY_DATA_DIR = path.resolve(
+  process.cwd(),
+  "workspace/skills/memory/data",
 );

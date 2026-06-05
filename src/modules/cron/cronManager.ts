@@ -35,12 +35,12 @@ export async function syncCronScheduler(): Promise<void> {
       const { name, expression, prompt, active = true } = job;
 
       if (active === false) {
-        log.info(`[CRON ENGINE] Skipping disabled cron: ${name}`);
+        log.debug({ name }, "[cron] skipping disabled job");
         continue;
       }
 
       if (!cron.validate(expression)) {
-        log.error(`[CRON ENGINE] Error Expression: ${name}`);
+        log.error({ name, expression }, "[cron] invalid cron expression — skipping");
         continue;
       }
 
@@ -51,7 +51,7 @@ export async function syncCronScheduler(): Promise<void> {
             const messages: Message[] = [
               {
                 role: "system",
-                content: getCronPrompt(),
+                content: await getCronPrompt(),
               },
               { role: "system", content: prompt },
             ];
@@ -92,9 +92,13 @@ export async function syncCronScheduler(): Promise<void> {
       scheduledTasks.set(name, task);
     }
 
-    log.info(`[CRON ENGINE] Finish load ${scheduledTasks.size} Prompt Crons.`);
+    const jobs = [...scheduledTasks.keys()];
+    log.info(
+      { count: scheduledTasks.size, ...(jobs.length > 0 && { jobs }) },
+      "[cron] scheduler ready.",
+    );
   } catch (err: any) {
-    log.error(`[CRON ENGINE CRITICAL] scheduler: ${err.message}`);
+    log.error({ err: err.message }, "[cron] critical scheduler error");
   }
 }
 

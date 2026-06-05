@@ -82,32 +82,7 @@ export const toolDeclarations = [
         .toJSONSchema(),
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "list_files",
-      description: "List files and directories under the workspace",
-      parameters: z
-        .object({
-          dir: z.string().optional().default("."),
-          recursive: z.boolean().optional().default(false),
-        })
-        .toJSONSchema(),
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "read_file",
-      description: "Read a file from the workspace (utf8 or base64)",
-      parameters: z
-        .object({
-          path: z.string().min(1),
-          encoding: z.enum(["utf8", "base64"]).optional().default("utf8"),
-        })
-        .toJSONSchema(),
-    },
-  },
+
   {
     type: "function",
     function: {
@@ -232,6 +207,89 @@ export const toolDeclarations = [
             ),
         })
         .toJSONSchema(),
+    },
+  },
+  // -------------------------------------------------------------------------
+  // Memory tools
+  // -------------------------------------------------------------------------
+  {
+    type: "function",
+    function: {
+      name: "memory_write",
+      description:
+        "Create or update a persistent memory namespace under workspace/skills/memory/data/. " +
+        "Read workspace/skills/memory/guide.md before first use.",
+      parameters: z
+        .object({
+          namespace: z
+            .string()
+            .regex(/^[a-zA-Z0-9_-]+$/)
+            .describe("Namespace name (snake_case). Becomes the filename."),
+          description: z
+            .string()
+            .optional()
+            .describe(
+              "Short description of what this namespace stores. Required when creating a new namespace.",
+            ),
+          patch: z
+            .record(z.string(), z.any())
+            .describe("Data to deep-merge into the namespace's data field."),
+          mode: z
+            .enum(["merge", "replace"])
+            .optional()
+            .default("merge")
+            .describe(
+              "merge (default): deep-merge patch into existing data. replace: overwrite data entirely.",
+            ),
+        })
+        .toJSONSchema(),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "memory_read",
+      description:
+        "Read a memory namespace. Returns full envelope or a single value by dot-notation key.",
+      parameters: z
+        .object({
+          namespace: z.string().describe("Namespace name to read."),
+          key: z
+            .string()
+            .optional()
+            .describe(
+              "Optional dot-notation path into the data field (e.g. \"preferences.language\"). Omit to read the full namespace.",
+            ),
+        })
+        .toJSONSchema(),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "memory_delete",
+      description:
+        "Delete a key from a namespace, or the entire namespace file if no key is given.",
+      parameters: z
+        .object({
+          namespace: z.string().describe("Namespace name."),
+          key: z
+            .string()
+            .optional()
+            .describe(
+              "Dot-notation key to delete from data. Omit to delete the entire namespace.",
+            ),
+        })
+        .toJSONSchema(),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "memory_list",
+      description:
+        "List all existing memory namespaces with their description, last updated time, and size.",
+      parameters: z.object({}).toJSONSchema(),
     },
   },
 ] as const satisfies Tool[];

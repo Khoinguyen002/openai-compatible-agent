@@ -30,9 +30,13 @@ export const callAgent = async ({
   maxTurns?: number;
 }) => {
   let turn = 0;
+  let totalToolCalls = 0;
   const { onChoice, onToolCallSuccess } = events || {};
   let choiceMessage: NonStreamingChoice["message"] | null = null;
   let needsApproval = false;
+  let lastFinishReason: string | null = null;
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
 
   try {
     while (true) {
@@ -40,23 +44,21 @@ export const callAgent = async ({
       turn++;
 
       if (turn > maxTurns) {
-        reqLogger.warn("Maximum turns reached");
+        reqLogger.warn({ maxTurns }, "Maximum turns reached");
         break;
       }
-      reqLogger.trace(
-        {
-          messages:
-            typeof messages === "function" ? await messages() : messages,
-        },
-        "messages before LLM call",
-      );
-      const result = await sendLLMRequest({
-        messages: typeof messages === "function" ? await messages() : messages,
+
+      const currentMessages =
+        typeof messages === "function" ? await messages() : messages;
+
+      reqLogger.trace({ messages: currentMessages }, "messages before LLM call");
+
+      const { response: result, durationMs } = await sendLLMRequest({
+        messages: currentMessages,
         model: config.MODEL_ID,
         tools,
       });
 
-      reqLogger.trace({ result }, "LLM response received");
       const choice = result?.choices?.[0];
 
       if (!choice) {
@@ -72,6 +74,34 @@ export const callAgent = async ({
       }
 
       choiceMessage = (result.choices[0] as NonStreamingChoice).message;
+      lastFinishReason = (choice as NonStreamingChoice).finish_reason;
+
+      // Accumulate token usage
+      if (result.usage) {
+        totalPromptTokens += result.usage.prompt_tokens ?? 0;
+        totalCompletionTokens += result.usage.completion_tokens ?? 0;
+      }
+
+      reqLogger.info(
+        {
+          turn,
+          durationMs,
+          model: result.model,
+          finish_reason: lastFinishReason,
+          usage: result.usage
+            ? {
+                prompt_tokens: result.usage.prompt_tokens,
+                completion_tokens: result.usage.completion_tokens,
+                total_tokens: result.usage.total_tokens,
+                reasoning_tokens:
+                  result.usage.completion_tokens_details?.reasoning_tokens,
+              }
+            : undefined,
+        },
+        "LLM call complete",
+      );
+
+      reqLogger.trace({ result }, "LLM response received");
 
       // Some models return finish_reason='stop' with content=null and no tool_calls.
       // Guard here to avoid persisting an empty assistant turn that corrupts future
@@ -83,7 +113,7 @@ export const callAgent = async ({
 
       if (!hasToolCalls && !hasContent) {
         reqLogger.warn(
-          { finish_reason: (choice as NonStreamingChoice).finish_reason },
+          { finish_reason: lastFinishReason },
           "LLM returned empty content with no tool calls — skipping persist",
         );
         break;
@@ -123,6 +153,7 @@ export const callAgent = async ({
         choiceMessage.tool_calls ?? [],
         reqLogger,
       );
+      totalToolCalls += toolResults.length;
       await onToolCallSuccess?.(toolResults);
       reqLogger.trace({ toolResults }, "tool calls successfully executed");
     }
@@ -130,6 +161,21 @@ export const callAgent = async ({
     reqLogger.error({ err }, "OpenRouter call failed");
     throw err;
   }
+
+  reqLogger.info(
+    {
+      turns: turn,
+      totalToolCalls,
+      finish_reason: lastFinishReason,
+      needsApproval,
+      totalUsage: {
+        prompt_tokens: totalPromptTokens,
+        completion_tokens: totalCompletionTokens,
+        total_tokens: totalPromptTokens + totalCompletionTokens,
+      },
+    },
+    "agent loop complete",
+  );
 
   return { reply: choiceMessage?.content ?? "", needsApproval };
 };
@@ -140,8 +186,9 @@ export async function executeToolCalls(
 ): Promise<ToolMessage[]> {
   return Promise.all<ToolMessage>(
     toolCalls.map(async (tc) => {
+      const toolName = tc.function.name;
+      const startedAt = Date.now();
       try {
-        const toolName = tc.function.name;
         let toolArgs = JSON.parse(tc.function.arguments);
 
         if (typeof toolArgs === "string") {
@@ -175,6 +222,16 @@ export async function executeToolCalls(
           toolResult = await executeDynamicTool(toolName, toolArgs);
         }
 
+        const durationMs = Date.now() - startedAt;
+        reqLogger.info(
+          {
+            toolName,
+            durationMs,
+            argsPreview: JSON.stringify(toolArgs).slice(0, 120),
+          },
+          "tool executed",
+        );
+
         return {
           content: JSON.stringify(toolResult),
           role: "tool",
@@ -182,16 +239,17 @@ export async function executeToolCalls(
           name: toolName,
         };
       } catch (error) {
+        const durationMs = Date.now() - startedAt;
         reqLogger.error(
-          { error, toolCall: tc },
-          "Error occurred while executing tool call",
+          { error, toolName, durationMs, toolCall: tc },
+          "Tool execution failed",
         );
 
         return {
           content: error instanceof Error ? error.message : String(error),
           role: "tool",
           tool_call_id: tc.id,
-          name: tc.function.name,
+          name: toolName,
         };
       }
     }),

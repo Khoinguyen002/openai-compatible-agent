@@ -32,14 +32,14 @@ export const telegramTools: Record<string, (args: any) => Promise<any>> = {
         return { success: false, error: "No message text provided." };
       }
 
-      // First try with Markdown
-      let result = await sendTelegramMessage(text, "Markdown");
+      // First try with HTML
+      let result = await sendTelegramMessage(text, "HTML");
 
-      // If Markdown parse fails (400), fall back to plain text
+      // If HTML parse fails (400), fall back to plain text
       if (!result.ok && result.status === 400) {
         logger.warn(
           { error: result.errData },
-          "Markdown parse failed — retrying as plain text",
+          "HTML parse failed — retrying as plain text",
         );
         result = await sendTelegramMessage(text);
       }

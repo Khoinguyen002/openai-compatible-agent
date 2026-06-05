@@ -92,7 +92,7 @@ export async function orchestrate(
     return [
       {
         role: "system",
-        content: getChatPrompt(),
+        content: await getChatPrompt(),
       },
       ...latestHistory,
     ] satisfies Message[];

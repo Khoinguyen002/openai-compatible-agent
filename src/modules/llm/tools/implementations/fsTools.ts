@@ -10,7 +10,7 @@ let BASE_WORKSPACE_REAL = "";
 export async function initWorkspace(): Promise<void> {
   await fs.mkdir(path.resolve(process.cwd(), "workspace"), { recursive: true });
   BASE_WORKSPACE_REAL = await fs.realpath(path.resolve(process.cwd(), "workspace"));
-  log.info({ base: BASE_WORKSPACE_REAL, root: process.cwd() }, "workspace initialized");
+  log.debug({ base: BASE_WORKSPACE_REAL, root: process.cwd() }, "workspace initialized");
 }
 
 async function ensureBaseRealpath() {

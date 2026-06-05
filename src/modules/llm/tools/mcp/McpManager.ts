@@ -3,12 +3,34 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import mcpConfig from "./mcp-config.json";
 import { childLogger } from "../../../logger/index.js";
 import { Tool } from "../../orchestrator/types/index.js";
+import { config } from "../../../../config/index.js";
+import path from "node:path";
 
 const log = childLogger({ module: "McpManager" });
+
+/**
+ * Resolves placeholder tokens in MCP config strings.
+ * Supported placeholders:
+ *   ${WORKSPACE_DIR} → <cwd>/workspace
+ *   ${<ENV_VAR>}     → process.env[ENV_VAR]
+ */
+function resolvePlaceholders(value: string): string {
+  const WORKSPACE_DIR = path.resolve(process.cwd(), "workspace");
+  return value.replace(/\$\{([^}]+)\}/g, (match, key) => {
+    if (key === "WORKSPACE_DIR") return WORKSPACE_DIR;
+    const configValue = config[key as keyof typeof config] as string | undefined;
+    if (configValue === undefined) {
+      log.warn({ placeholder: match }, "MCP config placeholder has no value — keeping as-is");
+      return match;
+    }
+    return configValue;
+  });
+}
 
 interface ServerConfig {
   command: string;
   args: string[];
+  env?: Record<string, string>;
   requireApproval?: boolean;
 }
 
@@ -27,19 +49,28 @@ export class McpManager {
   async initialize() {
     const config: ConfigSchema = mcpConfig;
     const serverEntries = Object.entries(config.mcpServers);
-
-    log.info(
-      `[MCP] Detected ${serverEntries.length} servers in configuration.`,
-    );
+    const failedServers = new Set<string>();
 
     await Promise.all(
       serverEntries.map(async ([serverName, serverConfig]) => {
         try {
-          log.info(`[MCP] Connecting to server: ${serverName}...`);
+          const resolvedArgs = serverConfig.args.map(resolvePlaceholders);
+          const resolvedEnv = serverConfig.env
+            ? Object.fromEntries(
+                Object.entries(serverConfig.env).map(([k, v]) => [
+                  k,
+                  resolvePlaceholders(v),
+                ]),
+              )
+            : undefined;
 
           const transport = new StdioClientTransport({
             command: serverConfig.command,
-            args: serverConfig.args,
+            args: resolvedArgs,
+            env: resolvedEnv
+              ? { ...process.env, ...resolvedEnv } as Record<string, string>
+              : undefined,
+            stderr: "pipe",
           });
 
           const client = new Client(
@@ -49,19 +80,16 @@ export class McpManager {
 
           await client.connect(transport);
 
-          // Fetch tool list from this server
           const mcpToolsResponse = await client.listTools();
+          const loadedTools: string[] = [];
 
           for (const tool of mcpToolsResponse.tools) {
-            // 1. Register in lookup map
             this.toolToClientMap.set(tool.name, client);
 
-            // 1.5. Check if server requires approval
             if (serverConfig.requireApproval) {
               this.approvalRequiredTools.add(tool.name);
             }
 
-            // 2. Format tool schema for OpenAI/OpenRouter
             this.systemTools.push({
               type: "function",
               function: {
@@ -70,43 +98,45 @@ export class McpManager {
                 parameters: tool.inputSchema,
               },
             });
-            log.info(
-              `   -> Successfully loaded tool: [${tool.name}] from server [${serverName}]`,
-            );
+
+            loadedTools.push(tool.name);
           }
+
+          log.debug(
+            { server: serverName, tools: loadedTools },
+            "[MCP] Server connected.",
+          );
         } catch (error: any) {
-          log.error(
-            { err: error.message },
-            `[MCP ERROR] Failed to load server [${serverName}]`,
+          failedServers.add(serverName);
+          log.warn(
+            { server: serverName, err: error.message },
+            "[MCP] Server unavailable — skipping.",
           );
         }
       }),
     );
 
+    const connectedCount = serverEntries.length - failedServers.size;
     log.info(
-      `[MCP] Initialization complete! Total tools loaded: ${this.systemTools.length}.`,
+      {
+        tools: this.systemTools.length,
+        servers: `${connectedCount}/${serverEntries.length}`,
+        ...(failedServers.size > 0 && { failed: [...failedServers] }),
+        toolNames: this.systemTools.map((t) => t.function.name),
+      },
+      "[MCP] Ready.",
     );
   }
 
-  // Middleware function to route tool calls from Orchestrator to the correct MCP Server
-  async handleToolCall(
-    toolName: string,
-    argumentsString: string,
-  ): Promise<string> {
+  async handleToolCall(toolName: string, argumentsString: string): Promise<string> {
     const client = this.toolToClientMap.get(toolName);
     if (!client) {
-      throw new Error(
-        `No MCP server found that provides the tool [${toolName}]!`,
-      );
+      throw new Error(`No MCP server found that provides the tool [${toolName}]!`);
     }
 
     const args = JSON.parse(argumentsString);
-    const mcpResult = await client.callTool({
-      name: toolName,
-      arguments: args,
-    });
+    const mcpResult = await client.callTool({ name: toolName, arguments: args });
 
-    // Aggregate text results into a raw string for the LLM
     return (mcpResult.content as any[]).map((c: any) => c.text).join("\n");
   }
 
