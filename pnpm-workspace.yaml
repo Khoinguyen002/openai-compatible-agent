@@ -1,0 +1,12 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'packages/agents/*'
+
+catalog: {}
+
+allowBuilds:
+  - '@prisma/engines'
+  - 'better-sqlite3'
+  - 'esbuild'
+  - 'prisma'

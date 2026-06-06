@@ -1,0 +1,14 @@
+{
+  "name": "@workspace/core",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {},
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  }
+}

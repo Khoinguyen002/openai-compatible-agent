@@ -14,27 +14,24 @@ A stateful, self-evolving AI agent integrated into Telegram via OpenRouter. Buil
 - **Validation**: `zod`
 - **Scheduling**: `node-cron` for prompt-based cron jobs
 
-## Directory Structure
+## Directory Structure (Monorepo)
 
-```
-src/
-├── main.ts                  # Entry point — startup, background jobs, bot/webhook init
-├── config/                  # Env config (zod-validated), workspace path constants
-├── db/                      # Prisma client
-├── export-cli.ts            # CLI to export conversation data for prompt optimization
-└── modules/
-    ├── bot/                 # Telegram bot — commands, message handler, chunking
-    ├── gateway/             # Rate limiting, user sync, webhook verification
-    ├── llm/
-    │   ├── orchestrator/    # Agent loop, context hydration, session management, pruning
-    │   ├── prompts/         # System prompt builder (async — injects memory index)
-    │   └── tools/           # Built-in tool declarations, MCP manager, dynamic tool runner
-    ├── vector/              # Local LanceDB + Transformers vector memory system
-    ├── export/              # Conversation export service (writes JSON to exports/)
-    ├── queue/               # Per-session message queue (prevents concurrent agent runs)
-    ├── cron/                # Prompt-based cron scheduler
-    ├── logger/              # Pino logger setup
-    └── sentry/              # Sentry initialization
+```text
+apps/
+└── telegram-bot/          # Telegram Bot app (entry point, webhooks, telegram logic)
+    └── src/
+        ├── bot/           # Commands, message handler, chunking
+        ├── cron/          # Prompt-based cron scheduler
+        ├── export/        # CLI export scripts
+        └── gateway/       # Rate limiting, user sync, webhook verification
+
+packages/
+├── core/                  # Core utilities (logger, sentry, env config, workspace dirs)
+├── db/                    # Prisma client, schema, SQLite db
+├── vector-db/             # Local LanceDB + Transformers vector memory system
+├── llm-engine/            # LLM Orchestrator, session management, dynamic tools, MCP
+└── agents/
+    └── doc-agent/         # Specialized agent hooks and tools for documents
 
 workspace/
 ├── guides/
@@ -94,7 +91,7 @@ npm run setup
 
 ### 2. Install dependencies
 ```bash
-npm install
+pnpm install
 ```
 
 ### 3. Database setup
