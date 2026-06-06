@@ -53,6 +53,14 @@ const schema = z.object({
 
   // MCP server keys (optional — only required when the corresponding MCP server is enabled)
   TAVILY_API_KEY: z.string().optional(),
+
+  // Google Drive JIT Integration
+  GOOGLE_CLIENT_EMAIL: z.string().email().optional(),
+  GOOGLE_PRIVATE_KEY: z.string().optional(),
+
+  // Vector DB Chunking
+  CHUNK_SIZE: z.coerce.number().int().positive().default(4000),
+  CHUNK_OVERLAP: z.coerce.number().int().nonnegative().default(500),
 });
 
 function loadConfig() {

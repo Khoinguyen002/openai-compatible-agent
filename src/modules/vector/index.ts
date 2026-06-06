@@ -55,6 +55,9 @@ export async function upsertProjectDocument(projectId: string, text: string, met
       projectId,
       text,
       vector,
+      source: metadata.source || "user",
+      file_id: metadata.file_id || null,
+      modified_time: metadata.modified_time || null,
       metadata: JSON.stringify(metadata),
       createdAt: new Date().toISOString()
     }
@@ -94,4 +97,55 @@ export async function searchProjectMemory(projectId: string, query: string, topK
     .toArray();
 
   return results;
+}
+
+export async function deleteProjectDocument(projectId: string, fileId: string): Promise<void> {
+  await initVectorDB();
+  if (!db) return;
+
+  const tableNames = await db.tableNames();
+  if (!tableNames.includes('project_memory')) return;
+
+  const table = await db.openTable('project_memory');
+  await table.delete(`projectId = '${projectId}' AND file_id = '${fileId}'`);
+  log.info({ projectId, fileId }, "Deleted old chunks from VectorDB");
+}
+
+export async function checkProjectDocumentExists(projectId: string, fileId: string): Promise<boolean> {
+  await initVectorDB();
+  if (!db) return false;
+
+  const tableNames = await db.tableNames();
+  if (!tableNames.includes('project_memory')) return false;
+
+  const table = await db.openTable('project_memory');
+  const count = await table.countRows(`projectId = '${projectId}' AND file_id = '${fileId}'`);
+  return count > 0;
+}
+
+export async function getProjectDocumentMetadata(projectId: string): Promise<Record<string, string>> {
+  await initVectorDB();
+  if (!db) return {};
+
+  const tableNames = await db.tableNames();
+  if (!tableNames.includes('project_memory')) return {};
+
+  const table = await db.openTable('project_memory');
+  
+  // Try to query distinct file_id and their modified_time. 
+  // LanceDB currently doesn't support GROUP BY natively in the JS client for this,
+  // so we'll fetch all chunks for the project (only needed columns) and reduce them.
+  const records = await table.query()
+    .where(`projectId = '${projectId}' AND source = 'google_drive'`)
+    .select(['file_id', 'modified_time'])
+    .toArray();
+
+  const fileMap: Record<string, string> = {};
+  for (const r of records) {
+    if (r.file_id && r.modified_time) {
+      fileMap[r.file_id as string] = r.modified_time as string;
+    }
+  }
+
+  return fileMap;
 }

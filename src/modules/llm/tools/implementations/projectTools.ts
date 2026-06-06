@@ -62,12 +62,12 @@ export const projectToolImplementations: Record<
       );
 
       if (!results || results.length === 0) {
-        return { success: true, results: [], message: "No relevant information found." };
+        return "NOT_FOUND";
       }
 
       return {
         success: true,
-        results: results.map((r: any) => r.text),
+        results: results.map((r: any) => r.text).join("\n\n---\n\n"),
       };
     } catch (err: any) {
       return { success: false, error: `Failed to search: ${err.message}` };

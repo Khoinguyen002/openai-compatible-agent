@@ -97,7 +97,14 @@ export async function orchestrate(
 
     let sysPrompt = await getChatPrompt();
     if (chatSession?.project) {
-      sysPrompt += `\n\n<b>PROJECT CONTEXT ACTIVE</b>: You are currently joined to Project: "${chatSession.project.title}" - ${chatSession.project.description || 'No description'}.\nIMPORTANT: This "Project" refers to a Vector Database memory space, NOT a local codebase directory. Your local codebase is always the global 'workspace/' directory. If the user asks you to save, learn, or memorize documents, text, rules, or decisions for this Project, you MUST use the 'store_project_knowledge' tool. NEVER use 'write_file' to save project knowledge or READMEs unless the user explicitly commands you to "write to the local file system". To recall semantic context, use 'search_project_knowledge'. Do not confuse the Project memory with your codebase file system.`;
+      sysPrompt += `\n\n<b>PROJECT CONTEXT ACTIVE</b>: You are currently joined to Project: "${chatSession.project.title}" - ${chatSession.project.description || 'No description'}.\nIMPORTANT: This "Project" refers to a Vector Database memory space, NOT a local codebase directory. Your local codebase is always the global 'workspace/' directory. If the user asks you to save, learn, or memorize documents, text, rules, or decisions for this Project, you MUST use the 'store_project_knowledge' tool. NEVER use 'write_file' to save project knowledge or READMEs unless the user explicitly commands you to "write to the local file system".      You have access to the Project's Vector Database for retrieving knowledge and context.
+      
+      JIT INGESTION RULE (STRICT):
+      1. ALWAYS start by using 'search_project_knowledge' to answer project-related questions.
+      2. If 'search_project_knowledge' returns "NOT_FOUND", it means the relevant context is NOT in the database yet.
+      3. ONLY THEN, you MUST use 'search_drive_tool' to find the relevant document on Google Drive.
+      4. If you find a relevant file on Drive, you MUST use 'ingest_drive_to_lancedb_tool' to learn it.
+      5. After ingestion is successful, you MUST retry 'search_project_knowledge' to get the actual content before answering.`;
     }
 
     return [

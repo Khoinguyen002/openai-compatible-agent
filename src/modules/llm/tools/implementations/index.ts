@@ -2,6 +2,7 @@ import { extensionImplementations } from "./extensions.js";
 import { memoryToolImplementations } from "./memoryTools.js";
 import { telegramTools } from "./telegram.js";
 import { projectToolImplementations } from "./projectTools.js";
+import { driveToolImplementations } from "./driveTools.js";
 
 export const toolImplementations: Record<string, (args: any, context?: any) => Promise<any>> =
   {
@@ -9,4 +10,5 @@ export const toolImplementations: Record<string, (args: any, context?: any) => P
     ...memoryToolImplementations,
     ...telegramTools,
     ...projectToolImplementations,
+    ...driveToolImplementations,
   };

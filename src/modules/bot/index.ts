@@ -206,10 +206,44 @@ bot.command("prj_status", async (ctx) => {
   });
 
   if (session?.project) {
-    await ctx.reply(`🔍 You are currently in project: <b>${session.project.title}</b>\n<i>${session.project.description || "No description"}</i>\n\nUse /prj_out to leave.`, { parse_mode: "HTML" });
+    let msg = `🔍 You are currently in project: <b>${session.project.title}</b>\n<i>${session.project.description || "No description"}</i>`;
+    if (session.project.driveFolderId) {
+      msg += `\n📁 Linked Drive Folder: <code>${session.project.driveFolderId}</code>`;
+    }
+    msg += `\n\nUse /prj_out to leave.`;
+    await ctx.reply(msg, { parse_mode: "HTML" });
   } else {
     await ctx.reply("You are not currently in any project. You are in general chat. Use /prj_list to see available projects.");
   }
+});
+
+// --- /prj_set_drive command ---
+bot.command("prj_set_drive", async (ctx) => {
+  if (!ctx.from) return;
+  const userId = BigInt(ctx.from.id);
+  const chatId = BigInt(ctx.chat.id);
+  const match = ctx.message?.text?.match(/^\/prj_set_drive\s+(.+)$/);
+  
+  if (!match) {
+    return ctx.reply("Usage: /prj_set_drive <google_drive_folder_id>");
+  }
+  const folderId = match[1].trim();
+
+  const sessionId = await resolveOrCreateSession(chatId, userId);
+  const session = await prisma.chatSession.findUnique({
+    where: { id: sessionId }
+  });
+
+  if (!session?.projectId) {
+    return ctx.reply("You must join a project first before setting a Drive folder.");
+  }
+
+  await prisma.project.update({
+    where: { id: session.projectId },
+    data: { driveFolderId: folderId }
+  });
+
+  await ctx.reply(`✅ Google Drive folder linked to project successfully.\nFolder ID: <code>${folderId}</code>`, { parse_mode: "HTML" });
 });
 
 // --- /prj_out command ---
@@ -294,6 +328,18 @@ async function processUserMessage(ctx: any, userId: bigint, chatId: bigint, text
       }, 4_000);
 
       try {
+        const session = await prisma.chatSession.findUnique({
+          where: { id: sessionId },
+          include: { project: true }
+        });
+
+        if (session?.project?.driveFolderId) {
+          const { syncProjectDriveFiles } = await import("../llm/orchestrator/driveSync.js");
+          await syncProjectDriveFiles(session.projectId!, (msg) => {
+            ctx.reply(msg).catch(() => undefined);
+          });
+        }
+
         await orchestrate({
           sessionId,
           userMessage: text,

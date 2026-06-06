@@ -61,9 +61,10 @@ model ContextItem {
 model Project {
   id          String   @id @default(uuid())
   userId      BigInt
-  title       String
-  description String?
-  createdAt   DateTime @default(now())
+  title         String
+  description   String?
+  driveFolderId String?
+  createdAt     DateTime @default(now())
 
   user        User          @relation(fields: [userId], references: [id])
   sessions    ChatSession[]

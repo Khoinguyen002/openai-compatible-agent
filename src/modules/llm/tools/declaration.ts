@@ -310,11 +310,37 @@ export const toolDeclarations = [
     function: {
       name: "search_project_knowledge",
       description:
-        "Perform a semantic search against the active Project's Vector Database to recall previously stored rules, decisions, or context. Use this when you need context about the current project.",
+        "Perform a semantic search against the active Project's Vector Database to recall previously stored rules, decisions, or context. ALWAYS use this FIRST when answering project-related questions.",
       parameters: z
         .object({
           query: z.string().describe("The search query. Should be a specific question or keyword to find relevant memory chunks."),
           topK: z.number().optional().describe("Number of results to return. Default is 3."),
+        })
+        .toJSONSchema(),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_drive_tool",
+      description:
+        "Search Google Drive for documents matching a keyword, or explore all documents if keyword is empty. ONLY use this if search_project_knowledge returns NOT_FOUND, or if you need to discover available documents.",
+      parameters: z
+        .object({
+          keyword: z.string().optional().describe("The name or keyword to search for. Leave empty to explore all available documents."),
+        })
+        .toJSONSchema(),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ingest_drive_to_lancedb_tool",
+      description:
+        "Download a file from Google Drive, split it, embed it, and ingest it into the local LanceDB. MUST be called after finding a relevant fileId from search_drive_tool.",
+      parameters: z
+        .object({
+          fileId: z.string().describe("The Google Drive fileId returned by search_drive_tool."),
         })
         .toJSONSchema(),
     },
