@@ -10,6 +10,7 @@
     "export": "tsx src/export-conversations.ts",
     "analyze": "tsx ../../scripts/analyze-sessions.ts",
     "db:generate": "prisma generate",
+    "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio"
   },
