@@ -12,6 +12,8 @@ dev.db
 *.sqlite
 *.sqlite3
 *-journal
+.lancedb/
+.lancedb
 
 # Env files
 .env
@@ -19,16 +21,16 @@ dev.db
 *.env
 
 # Workspace dynamic directories
-workspace/skills/cron/declaration.json
-workspace/skills/tools/declaration.json
-workspace/skills/tools/implementations/*
-workspace/skills/memory/data/*
+**/workspace/skills/cron/declaration.json
+**/workspace/skills/tools/declaration.json
+**/workspace/skills/tools/implementations/*
+**/workspace/skills/memory/data/*
 
 # Agent logs (outside workspace to prevent AI from reading)
-logs/
+**/logs/
 
 # Exported conversation data (for prompt optimization — never commit)
-exports/
+**/exports/
 
 # Prisma migrations (only track init)
 prisma/migrations/*/

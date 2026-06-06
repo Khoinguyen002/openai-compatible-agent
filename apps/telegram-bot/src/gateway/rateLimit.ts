@@ -1,4 +1,4 @@
-import { prisma } from "@workspace/db";
+import { prisma } from "../db/client.js";
 import { config } from "@workspace/core";
 import { childLogger } from "@workspace/core";
 

@@ -1,11 +1,8 @@
 import { google } from "googleapis";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { prisma } from "@workspace/db";
 import { config } from "@workspace/core";
 import {
-  searchProjectMemory,
   upsertProjectDocument,
-  checkProjectDocumentExists,
   getProjectDocumentMetadata,
   deleteProjectDocument,
 } from "@workspace/vector-db";
@@ -34,139 +31,108 @@ function getDriveClient() {
   return google.drive({ version: "v3", auth });
 }
 
-export const driveToolImplementations: Record<
-  string,
-  (args: any, context?: any) => Promise<any>
-> = {
-  search_drive_tool: async (args: { keyword?: string }, context?: any) => {
-    if (!context?.sessionId)
-      return { success: false, error: "Missing sessionId in context" };
+export async function searchDriveDocuments(keyword?: string) {
+  const folderId = process.env.DRIVE_FOLDER_ID;
+  if (!folderId) {
+    return {
+      success: false,
+      error: "DRIVE_FOLDER_ID is not configured for this agent.",
+    };
+  }
 
-    const chatSession = await prisma.chatSession.findUnique({
-      where: { id: context.sessionId },
-      include: { project: true },
+  try {
+    const drive = getDriveClient();
+    let q = "mimeType = 'application/vnd.google-apps.document'";
+    q = `'${folderId}' in parents and ${q}`;
+
+    if (keyword) {
+      q = `name contains '${keyword}' and ${q}`;
+    }
+
+    const res = await drive.files.list({
+      q,
+      fields: "files(id, name, description)",
+      spaces: "drive",
+      pageSize: 50,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     });
 
-    if (!chatSession?.project) {
-      return {
-        success: false,
-        error:
-          "This session is not associated with any project. Join a project first.",
-      };
+    const files = res.data.files;
+    if (!files || files.length === 0) {
+      return { success: true, results: [] };
     }
 
-    if (!chatSession.project.driveFolderId) {
-      return {
-        success: false,
-        error:
-          "No Google Drive folder linked to this project. Ask the user to link one using /prj_set_drive <folder_id>.",
-      };
-    }
+    return { success: true, results: files };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
 
-    try {
-      const drive = getDriveClient();
-      let q = "mimeType = 'application/vnd.google-apps.document'";
-      q = `'${chatSession.project.driveFolderId}' in parents and ${q}`;
+export async function ingestDriveDocument(fileId: string) {
+  const folderId = process.env.DRIVE_FOLDER_ID;
+  if (!folderId) {
+    return {
+      success: false,
+      error: "DRIVE_FOLDER_ID is not configured for this agent.",
+    };
+  }
 
-      if (args.keyword) {
-        q = `name contains '${args.keyword}' and ${q}`;
-      }
+  try {
+    const drive = getDriveClient();
 
-      const res = await drive.files.list({
-        q,
-        fields: "files(id, name, description)",
-        spaces: "drive",
-        pageSize: 50,
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
-      });
-
-      const files = res.data.files;
-      if (!files || files.length === 0) {
-        return { success: true, results: [] };
-      }
-
-      return { success: true, results: files };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
-  },
-
-  ingest_drive_to_lancedb_tool: async (
-    args: { fileId: string },
-    context?: any,
-  ) => {
-    if (!context?.sessionId)
-      return { success: false, error: "Missing sessionId in context" };
-
-    const chatSession = await prisma.chatSession.findUnique({
-      where: { id: context.sessionId },
+    const fileInfo = await drive.files.get({
+      fileId,
+      fields: "id, name, modifiedTime",
+      supportsAllDrives: true,
     });
 
-    if (!chatSession?.projectId) {
-      return {
-        success: false,
-        error:
-          "This session is not associated with any project. Join a project first.",
-      };
-    }
+    const driveModifiedTime = fileInfo.data.modifiedTime || "";
+    // Note: We use folderId as the "projectId" parameter for vector-db namespace
+    const dbMetaMap = await getProjectDocumentMetadata(folderId);
+    const dbModifiedTime = dbMetaMap[fileId];
 
-    try {
-      const drive = getDriveClient();
-
-      const fileInfo = await drive.files.get({
-        fileId: args.fileId,
-        fields: "id, name, modifiedTime",
-        supportsAllDrives: true,
-      });
-
-      const driveModifiedTime = fileInfo.data.modifiedTime || "";
-      const dbMetaMap = await getProjectDocumentMetadata(chatSession.projectId);
-      const dbModifiedTime = dbMetaMap[args.fileId];
-
-      if (dbModifiedTime && dbModifiedTime === driveModifiedTime) {
-        return {
-          success: true,
-          message: `File '${fileInfo.data.name}' is already up-to-date in project memory.`,
-        };
-      }
-
-      if (dbModifiedTime) {
-        await deleteProjectDocument(chatSession.projectId, args.fileId);
-      }
-
-      const res = await drive.files.export({
-        fileId: args.fileId,
-        mimeType: "text/plain",
-      });
-
-      const content = res.data;
-      if (typeof content !== "string" || content.trim() === "") {
-        return { success: false, error: "Empty or invalid file content" };
-      }
-
-      const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: config.CHUNK_SIZE,
-        chunkOverlap: config.CHUNK_OVERLAP,
-      });
-      const chunks = await splitter.splitText(content);
-
-      for (const chunk of chunks) {
-        await upsertProjectDocument(chatSession.projectId, chunk, {
-          title: fileInfo.data.name || "Untitled Google Doc",
-          source: "google_drive",
-          file_id: args.fileId,
-          modified_time: driveModifiedTime,
-          sessionId: context.sessionId,
-        });
-      }
-
+    if (dbModifiedTime && dbModifiedTime === driveModifiedTime) {
       return {
         success: true,
-        message: `Successfully ingested '${fileInfo.data.name}' into project memory (${chunks.length} chunks).`,
+        message: `File '${fileInfo.data.name}' is already up-to-date in project memory.`,
       };
-    } catch (err: any) {
-      return { success: false, error: err.message };
     }
-  },
-};
+
+    if (dbModifiedTime) {
+      await deleteProjectDocument(folderId, fileId);
+    }
+
+    const res = await drive.files.export({
+      fileId: fileId,
+      mimeType: "text/plain",
+    });
+
+    const content = res.data;
+    if (typeof content !== "string" || content.trim() === "") {
+      return { success: false, error: "Empty or invalid file content" };
+    }
+
+    const splitter = new RecursiveCharacterTextSplitter({
+      chunkSize: config.CHUNK_SIZE,
+      chunkOverlap: config.CHUNK_OVERLAP,
+    });
+    const chunks = await splitter.splitText(content);
+
+    for (const chunk of chunks) {
+      await upsertProjectDocument(folderId, chunk, {
+        title: fileInfo.data.name || "Untitled Google Doc",
+        source: "google_drive",
+        file_id: fileId,
+        modified_time: driveModifiedTime,
+      });
+    }
+
+    return {
+      success: true,
+      message: `Successfully ingested '${fileInfo.data.name}' into project memory (${chunks.length} chunks).`,
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}

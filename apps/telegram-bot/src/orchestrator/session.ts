@@ -1,4 +1,4 @@
-import { prisma } from "@workspace/db";
+import { prisma } from "../db/client.js";
 import { childLogger } from "@workspace/core";
 
 const log = childLogger({ module: 'session' });
@@ -22,18 +22,10 @@ export async function resolveOrCreateSession(
     return existing.id;
   }
 
-  // If no active session, find the most recent session (even if ended) to carry over context like projectId
-  const lastSession = await prisma.chatSession.findFirst({
-    where: { telegramChatId },
-    orderBy: { createdAt: 'desc' },
-    select: { projectId: true },
-  });
-
   const session = await prisma.chatSession.create({
     data: { 
       telegramChatId, 
       userId,
-      projectId: lastSession?.projectId // Carry over project context
     },
     select: { id: true },
   });
@@ -51,12 +43,6 @@ export async function rotateSession(
   telegramChatId: bigint,
   userId: bigint,
 ): Promise<string> {
-  // Find the currently active session to carry over its projectId
-  const currentActive = await prisma.chatSession.findFirst({
-    where: { telegramChatId, endedAt: null },
-    select: { projectId: true },
-  });
-
   // End all currently active sessions for this chat (defensive — should only be one)
   await prisma.chatSession.updateMany({
     where: { telegramChatId, endedAt: null },
@@ -67,7 +53,6 @@ export async function rotateSession(
     data: { 
       telegramChatId, 
       userId,
-      projectId: currentActive?.projectId // Carry over the project context
     },
     select: { id: true },
   });

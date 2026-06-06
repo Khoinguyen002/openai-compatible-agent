@@ -10,9 +10,9 @@ import { sessionQueue } from "../queue/sessionQueue.js";
 import {
   resolveOrCreateSession,
   rotateSession,
-} from "@workspace/llm-engine";
-import { orchestrate } from "@workspace/llm-engine";
-import { prisma } from "@workspace/db";
+} from "../orchestrator/session.js";
+import { orchestrate } from "../orchestrator/index.js";
+import { prisma } from "../db/client.js";
 
 const log = childLogger({ module: "bot" });
 const TELEGRAM_MESSAGE_LIMIT = 4096;
@@ -119,153 +119,18 @@ bot.command("newchat", async (ctx) => {
   );
 });
 
-// --- /prj_create command ---
-bot.command("prj_create", async (ctx) => {
-  if (!ctx.from) return;
-  const userId = BigInt(ctx.from.id);
-  const match = ctx.message?.text?.match(/^\/prj_create\s+(.+)$/);
-  if (!match) {
-    return ctx.reply("Usage: /prj_create <title> | <description>");
-  }
 
-  const [title, ...descParts] = match[1].split("|").map(s => s.trim());
-  const description = descParts.join("|") || null;
-
-  if (!title) {
-    return ctx.reply("Title is required.");
-  }
-
-  await syncUser(ctx.from);
-  const project = await prisma.project.create({
-    data: {
-      userId,
-      title,
-      description,
-    }
-  });
-
-  await ctx.reply(`✅ Project created: <b>${project.title}</b>\nID: <code>${project.id}</code>\nUse <code>/prj_join ${project.id}</code> to join.`, { parse_mode: "HTML" });
-});
-
-// --- /prj_list command ---
-bot.command("prj_list", async (ctx) => {
-  if (!ctx.from) return;
-  const userId = BigInt(ctx.from.id);
-  
-  const projects = await prisma.project.findMany({
-    where: { userId }
-  });
-
-  if (projects.length === 0) {
-    return ctx.reply("You don't have any projects yet.");
-  }
-
-  const list = projects.map(p => `🔹 <b>${p.title}</b>\nID: <code>${p.id}</code>\nDesc: ${p.description || "N/A"}`).join("\n\n");
-  await ctx.reply(`<b>Your Projects:</b>\n\n${list}`, { parse_mode: "HTML" });
-});
-
-// --- /prj_join command ---
-bot.command("prj_join", async (ctx) => {
-  if (!ctx.from) return;
-  const userId = BigInt(ctx.from.id);
-  const chatId = BigInt(ctx.chat.id);
-  const match = ctx.message?.text?.match(/^\/prj_join\s+(.+)$/);
-  
-  if (!match) {
-    return ctx.reply("Usage: /prj_join <project_id>");
-  }
-  const projectId = match[1].trim();
-
-  const project = await prisma.project.findFirst({
-    where: { id: projectId, userId }
-  });
-
-  if (!project) {
-    return ctx.reply("Project not found or you don't have access to it.");
-  }
-
-  const sessionId = await resolveOrCreateSession(chatId, userId);
-  await prisma.chatSession.update({
-    where: { id: sessionId },
-    data: { projectId }
-  });
-
-  await ctx.reply(`✅ Joined project: <b>${project.title}</b>`, { parse_mode: "HTML" });
-});
-
-// --- /prj_status command ---
-bot.command("prj_status", async (ctx) => {
-  if (!ctx.from) return;
-  const userId = BigInt(ctx.from.id);
-  const chatId = BigInt(ctx.chat.id);
-
-  const sessionId = await resolveOrCreateSession(chatId, userId);
-  const session = await prisma.chatSession.findUnique({
-    where: { id: sessionId },
-    include: { project: true }
-  });
-
-  if (session?.project) {
-    let msg = `🔍 You are currently in project: <b>${session.project.title}</b>\n<i>${session.project.description || "No description"}</i>`;
-    if (session.project.driveFolderId) {
-      msg += `\n📁 Linked Drive Folder: <code>${session.project.driveFolderId}</code>`;
-    }
-    msg += `\n\nUse /prj_out to leave.`;
-    await ctx.reply(msg, { parse_mode: "HTML" });
-  } else {
-    await ctx.reply("You are not currently in any project. You are in general chat. Use /prj_list to see available projects.");
-  }
-});
-
-// --- /prj_set_drive command ---
-bot.command("prj_set_drive", async (ctx) => {
-  if (!ctx.from) return;
-  const userId = BigInt(ctx.from.id);
-  const chatId = BigInt(ctx.chat.id);
-  const match = ctx.message?.text?.match(/^\/prj_set_drive\s+(.+)$/);
-  
-  if (!match) {
-    return ctx.reply("Usage: /prj_set_drive <google_drive_folder_id>");
-  }
-  const folderId = match[1].trim();
-
-  const sessionId = await resolveOrCreateSession(chatId, userId);
-  const session = await prisma.chatSession.findUnique({
-    where: { id: sessionId }
-  });
-
-  if (!session?.projectId) {
-    return ctx.reply("You must join a project first before setting a Drive folder.");
-  }
-
-  await prisma.project.update({
-    where: { id: session.projectId },
-    data: { driveFolderId: folderId }
-  });
-
-  await ctx.reply(`✅ Google Drive folder linked to project successfully.\nFolder ID: <code>${folderId}</code>`, { parse_mode: "HTML" });
-});
-
-// --- /prj_out command ---
-bot.command("prj_out", async (ctx) => {
-  if (!ctx.from) return;
-  const userId = BigInt(ctx.from.id);
-  const chatId = BigInt(ctx.chat.id);
-
-  const sessionId = await resolveOrCreateSession(chatId, userId);
-  await prisma.chatSession.update({
-    where: { id: sessionId },
-    data: { projectId: null }
-  });
-
-  await ctx.reply(`🚪 Left the project. You are back to general chat.`);
-});
 
 // --- Main message handler with buffering ---
 const messageBuffers = new Map<bigint, {
   text: string[];
   timer: NodeJS.Timeout;
 }>();
+
+bot.on("message", async (ctx, next) => {
+  log.info({ update: ctx.update }, "received raw message update");
+  await next();
+});
 
 bot.on("message:text", async (ctx) => {
   if (!ctx.from) return;
@@ -328,17 +193,7 @@ async function processUserMessage(ctx: any, userId: bigint, chatId: bigint, text
       }, 4_000);
 
       try {
-        const session = await prisma.chatSession.findUnique({
-          where: { id: sessionId },
-          include: { project: true }
-        });
 
-        if (session?.project?.driveFolderId) {
-          const { syncProjectDriveFiles } = await import("@workspace/doc-agent");
-          await syncProjectDriveFiles(session.projectId!, (msg: string) => {
-            ctx.reply(msg).catch(() => undefined);
-          });
-        }
 
         await orchestrate({
           sessionId,

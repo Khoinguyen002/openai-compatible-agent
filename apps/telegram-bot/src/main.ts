@@ -4,8 +4,8 @@ import { logger } from "@workspace/core";
 import { initSentry } from "@workspace/core";
 import { bot, createWebhookHandler } from "./bot/index.js";
 import { resetDailyRequestCounts } from "./gateway/rateLimit.js";
-import { expireIdleSessions } from "@workspace/llm-engine";
-import { prisma } from "@workspace/db";
+import { expireIdleSessions } from "./orchestrator/session.js";
+import { prisma } from "./db/client.js";
 
 async function main() {
   initSentry();

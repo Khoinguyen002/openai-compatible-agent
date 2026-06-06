@@ -3,10 +3,12 @@ packages:
   - 'packages/*'
   - 'packages/agents/*'
 
-catalog: {}
-
 allowBuilds:
-  - '@prisma/engines'
-  - 'better-sqlite3'
-  - 'esbuild'
-  - 'prisma'
+  '0': '@prisma/engines'
+  '1': better-sqlite3
+  '2': esbuild
+  '3': prisma
+  '@prisma/engines': true
+  better-sqlite3: true
+  esbuild: true
+  prisma: false

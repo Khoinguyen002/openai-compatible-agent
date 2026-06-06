@@ -17,7 +17,6 @@ model User {
 
   sessions           ChatSession[]
   sentItems          ContextItem[] @relation("SenderItems")
-  projects           Project[]
 
   @@map("users")
 }
@@ -26,12 +25,10 @@ model ChatSession {
   id             String    @id @default(uuid())
   telegramChatId BigInt
   userId         BigInt
-  projectId      String?
   endedAt        DateTime?
   createdAt      DateTime  @default(now())
 
   user           User          @relation(fields: [userId], references: [id])
-  project        Project?      @relation(fields: [projectId], references: [id])
   contextItems   ContextItem[]
 
   @@index([telegramChatId, createdAt(sort: Desc)])
@@ -56,18 +53,4 @@ model ContextItem {
   @@index([sessionId, sequence(sort: Asc)])
   @@index([sessionId, createdAt(sort: Desc)])
   @@map("context_items")
-}
-
-model Project {
-  id          String   @id @default(uuid())
-  userId      BigInt
-  title         String
-  description   String?
-  driveFolderId String?
-  createdAt     DateTime @default(now())
-
-  user        User          @relation(fields: [userId], references: [id])
-  sessions    ChatSession[]
-
-  @@map("projects")
 }

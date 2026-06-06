@@ -11,7 +11,7 @@
  */
 
 import "./config/index.js"; // loads dotenv
-import { prisma } from "@workspace/db";
+import { prisma } from "./db/client.js";
 import { exportSession, exportChat, exportAllMerged } from "./export/index.js";
 
 const args = process.argv.slice(2);

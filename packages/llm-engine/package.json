@@ -8,7 +8,6 @@
   },
   "dependencies": {
     "@workspace/core": "workspace:*",
-    "@workspace/db": "workspace:*",
     "@workspace/doc-agent": "workspace:*"
   },
   "types": "dist/index.d.ts",

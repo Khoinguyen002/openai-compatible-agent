@@ -1,6 +1,6 @@
 import type { ContextItem } from "@prisma/client";
-import { prisma } from "@workspace/db";
-import { Message, ToolCall } from "./types/index.js";
+import { prisma } from "../db/client.js";
+import { Message, ToolCall } from "@workspace/llm-engine";
 
 /**
  * Loads all prior context_items for the session, applies pruning if needed,

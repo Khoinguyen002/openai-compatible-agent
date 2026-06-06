@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import { prisma } from "@workspace/db";
+import { prisma } from "../db/client.js";
 import { getChatPrompt } from "@workspace/llm-engine";
 import { childLogger } from "@workspace/core";
 import type {
