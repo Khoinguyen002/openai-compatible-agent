@@ -1,4 +1,4 @@
-import { config } from "@workspace/core";
+import { config } from "../config/index.js";
 
 /**
  * Validates the X-Telegram-Bot-Api-Secret-Token header on every inbound

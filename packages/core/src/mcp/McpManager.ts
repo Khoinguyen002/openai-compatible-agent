@@ -1,28 +1,24 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { childLogger } from "../logger/index.js";
-import { config } from "../config/index.js";
 import path from "node:path";
 
 const log = childLogger({ module: "McpManager" });
 
-/**
- * Resolves placeholder tokens in MCP config strings.
- * Supported placeholders:
- *   ${WORKSPACE_DIR} → <cwd>/workspace
- *   ${<ENV_VAR>}     → process.env[ENV_VAR]
- */
-function resolvePlaceholders(value: string): string {
-  const WORKSPACE_DIR = path.resolve(process.cwd(), "workspace");
-  return value.replace(/\$\{([^}]+)\}/g, (match, key) => {
-    if (key === "WORKSPACE_DIR") return WORKSPACE_DIR;
-    const configValue = config[key as keyof typeof config] as string | undefined;
-    if (configValue === undefined) {
-      log.warn({ placeholder: match }, "MCP config placeholder has no value — keeping as-is");
-      return match;
-    }
-    return configValue;
-  });
+export type PlaceholderResolver = (key: string) => string | undefined;
+
+function createPlaceholderResolver(workspaceDir: string, getEnvVar: PlaceholderResolver) {
+  return (value: string): string => {
+    return value.replace(/\$\{([^}]+)\}/g, (match, key) => {
+      if (key === "WORKSPACE_DIR") return workspaceDir;
+      const configValue = getEnvVar(key);
+      if (configValue === undefined) {
+        log.warn({ placeholder: match }, "MCP config placeholder has no value — keeping as-is");
+        return match;
+      }
+      return configValue;
+    });
+  };
 }
 
 export interface ServerConfig {
@@ -53,9 +49,14 @@ export class McpManager {
   // Array containing all tool schemas formatted for OpenRouter
   public systemTools: FormattedTool[] = [];
 
-  async initialize(mcpConfig: McpConfigSchema) {
+  async initialize(
+    mcpConfig: McpConfigSchema,
+    workspaceDir: string,
+    getEnvVar: PlaceholderResolver
+  ) {
     const serverEntries = Object.entries(mcpConfig.mcpServers || {});
     const failedServers = new Set<string>();
+    const resolvePlaceholders = createPlaceholderResolver(workspaceDir, getEnvVar);
 
     await Promise.all(
       serverEntries.map(async ([serverName, serverConfig]) => {

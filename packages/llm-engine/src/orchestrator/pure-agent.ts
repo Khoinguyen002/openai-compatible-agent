@@ -1,4 +1,3 @@
-import { config } from "@workspace/core";
 import { logger } from "@workspace/core";
 import { sendLLMRequest } from "./pure-llm.js";
 import {
@@ -30,6 +29,8 @@ export const callAgent = async ({
   };
   maxTurns?: number;
   context?: { sessionId: string };
+  apiKey: string;
+  modelId: string;
 }) => {
   let turn = 0;
   let totalToolCalls = 0;
@@ -57,9 +58,9 @@ export const callAgent = async ({
 
       const { response: result, durationMs } = await sendLLMRequest({
         messages: currentMessages,
-        model: config.MODEL_ID,
+        model: modelId,
         tools,
-      });
+      }, apiKey);
 
       const choice = result?.choices?.[0];
 

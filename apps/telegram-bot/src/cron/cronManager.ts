@@ -4,6 +4,7 @@ import { callAgent } from "@workspace/llm-engine";
 import { Message } from "@workspace/llm-engine";
 import { childLogger } from "../logger.js";
 import { CRON_DECLARATION } from "@workspace/core";
+import { config } from "../config/index.js";
 import { getCronPrompt } from "../prompts/index.js";
 import { getTools, executeTool } from "../tools/index.js";
 const scheduledTasks = new Map<string, cron.ScheduledTask>();
@@ -67,6 +68,8 @@ export async function syncCronScheduler(): Promise<void> {
               messages: () => messages,
               tools,
               toolExecutors: executeTool,
+              apiKey: config.OPENROUTER_API_KEY,
+              modelId: config.MODEL_ID,
               events: {
                 onChoice(choice) {
                   messages.push({

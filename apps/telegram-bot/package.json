@@ -8,7 +8,7 @@
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
     "export": "tsx src/export-conversations.ts",
-    "analyze": "tsx ../../scripts/analyze-sessions.ts",
+    "analyze": "tsx scripts/analyze-sessions.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -20,7 +20,7 @@
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "better-sqlite3": "^12.10.0",
     "@workspace/llm-engine": "workspace:*",
-    "@workspace/doc-agent": "workspace:*"
+    "@workspace/doc-mcp": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^7.8.0"

@@ -1,5 +1,5 @@
 import http from "http";
-import { config } from "@workspace/core";
+import { config } from "./config/index.js";
 import { logger } from "./logger.js";
 import { initSentry } from "@workspace/core";
 import { bot, createWebhookHandler } from "./bot/index.js";

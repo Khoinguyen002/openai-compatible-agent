@@ -2,12 +2,16 @@ import {
   getProjectDocumentMetadata,
   deleteProjectDocument,
   upsertProjectDocument,
-} from "@workspace/vector-db";
+} from "../db/vector.js";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { childLogger } from "@workspace/core";
-import { config } from "@workspace/core";
+// Remove childLogger dependency to fully decouple from core
+// import { childLogger } from "@workspace/core";
+import { config } from "../config.js";
 
-const log = childLogger({ module: "driveSync" });
+const log = {
+  info: (obj: any, msg: string) => console.log(`[driveSync] ${msg}`, obj),
+  error: (obj: any, msg: string) => console.error(`[driveSync] ${msg}`, obj)
+};
 
 export async function syncProjectDriveFiles(
   projectId: string,
@@ -22,8 +26,8 @@ export async function syncProjectDriveFiles(
 
   const { google } = await import("googleapis");
 
-  const clientEmail = config.GOOGLE_CLIENT_EMAIL;
-  let privateKey = config.GOOGLE_PRIVATE_KEY;
+  const clientEmail = config.DOC_MCP_GOOGLE_CLIENT_EMAIL;
+  let privateKey = config.DOC_MCP_GOOGLE_PRIVATE_KEY;
   if (!clientEmail || !privateKey) return;
   if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
     privateKey = privateKey.slice(1, -1);

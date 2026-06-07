@@ -84,9 +84,9 @@ importers:
       '@workspace/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@workspace/doc-agent':
+      '@workspace/doc-mcp':
         specifier: workspace:*
-        version: link:../../packages/agents/doc-agent
+        version: link:../../packages/mcp-servers/doc-mcp
       '@workspace/llm-engine':
         specifier: workspace:*
         version: link:../../packages/llm-engine
@@ -98,18 +98,6 @@ importers:
         specifier: ^7.8.0
         version: 7.8.0(@types/react@19.2.16)(better-sqlite3@12.10.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
 
-  packages/agents/doc-agent:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.29.0
-        version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
-      '@workspace/core':
-        specifier: workspace:*
-        version: link:../../core
-      '@workspace/vector-db':
-        specifier: workspace:*
-        version: link:../../vector-db
-
   packages/core: {}
 
   packages/llm-engine:
@@ -117,15 +105,15 @@ importers:
       '@workspace/core':
         specifier: workspace:*
         version: link:../core
-      '@workspace/doc-agent':
+      '@workspace/doc-mcp':
         specifier: workspace:*
-        version: link:../agents/doc-agent
+        version: link:../mcp-servers/doc-mcp
 
-  packages/vector-db:
+  packages/mcp-servers/doc-mcp:
     dependencies:
-      '@workspace/core':
-        specifier: workspace:*
-        version: link:../core
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
 
 packages:
 

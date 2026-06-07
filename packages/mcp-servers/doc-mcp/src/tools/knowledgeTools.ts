@@ -1,9 +1,9 @@
-import { upsertProjectDocument, searchProjectMemory } from "@workspace/vector-db";
+import { upsertProjectDocument, searchProjectMemory } from "../db/vector.js";
 
 export async function storeKnowledge(content: string) {
-  const folderId = process.env.DRIVE_FOLDER_ID;
+  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
-    return { success: false, error: "DRIVE_FOLDER_ID is not configured." };
+    return { success: false, error: "DOC_MCP_DRIVE_FOLDER_ID is not configured." };
   }
 
   try {
@@ -18,9 +18,9 @@ export async function storeKnowledge(content: string) {
 }
 
 export async function searchKnowledge(query: string, topK: number = 3) {
-  const folderId = process.env.DRIVE_FOLDER_ID;
+  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
-    return { success: false, error: "DRIVE_FOLDER_ID is not configured." };
+    return { success: false, error: "DOC_MCP_DRIVE_FOLDER_ID is not configured." };
   }
 
   try {

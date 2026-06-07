@@ -1,19 +1,19 @@
 import { google } from "googleapis";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { config } from "@workspace/core";
+import { config } from "../config.js";
 import {
   upsertProjectDocument,
   getProjectDocumentMetadata,
   deleteProjectDocument,
-} from "@workspace/vector-db";
+} from "../db/vector.js";
 
 function getDriveClient() {
-  const clientEmail = config.GOOGLE_CLIENT_EMAIL;
-  let privateKey = config.GOOGLE_PRIVATE_KEY;
+  const clientEmail = config.DOC_MCP_GOOGLE_CLIENT_EMAIL;
+  let privateKey = config.DOC_MCP_GOOGLE_PRIVATE_KEY;
 
   if (!clientEmail || !privateKey) {
     throw new Error(
-      "Google Drive credentials not configured. Please set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY in .env",
+      "Google Drive credentials not configured. Please set DOC_MCP_GOOGLE_CLIENT_EMAIL and DOC_MCP_GOOGLE_PRIVATE_KEY in .env",
     );
   }
 
@@ -32,11 +32,11 @@ function getDriveClient() {
 }
 
 export async function searchDriveDocuments(keyword?: string) {
-  const folderId = process.env.DRIVE_FOLDER_ID;
+  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
     return {
       success: false,
-      error: "DRIVE_FOLDER_ID is not configured for this agent.",
+      error: "DOC_MCP_DRIVE_FOLDER_ID is not configured for this agent.",
     };
   }
 
@@ -70,11 +70,11 @@ export async function searchDriveDocuments(keyword?: string) {
 }
 
 export async function ingestDriveDocument(fileId: string) {
-  const folderId = process.env.DRIVE_FOLDER_ID;
+  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
     return {
       success: false,
-      error: "DRIVE_FOLDER_ID is not configured for this agent.",
+      error: "DOC_MCP_DRIVE_FOLDER_ID is not configured for this agent.",
     };
   }
 

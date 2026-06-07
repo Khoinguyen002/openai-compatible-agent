@@ -1,4 +1,4 @@
-import { config } from "@workspace/core";
+import { config } from "../config/index.js";
 import { childLogger } from "../logger.js";
 import { hydrateContext } from "./hydrate.js";
 import { persistItems } from "./persistItems.js";
@@ -106,6 +106,8 @@ export async function orchestrate(
     tools,
     toolExecutors: executeTool,
     reqLogger: reqLog,
+    apiKey: config.OPENROUTER_API_KEY,
+    modelId: config.MODEL_ID,
     events: {
       async onChoice(choiceMessage) {
         await onChoice?.(choiceMessage);

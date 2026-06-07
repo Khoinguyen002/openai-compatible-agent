@@ -1,13 +1,14 @@
 {
-  "name": "@workspace/vector-db",
+  "name": "@workspace/doc-mcp",
   "version": "1.0.0",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "start": "node dist/mcp-server.js"
   },
   "dependencies": {
-    "@workspace/core": "workspace:*"
+    "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "types": "dist/index.d.ts",
   "exports": {

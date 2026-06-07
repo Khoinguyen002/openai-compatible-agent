@@ -1,4 +1,4 @@
-import { config } from "@workspace/core";
+import { config } from "../config/index.js";
 import { logger } from "../logger.js";
 
 async function sendTelegramMessage(text: string, parseMode?: string) {

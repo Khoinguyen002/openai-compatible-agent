@@ -1,9 +1,7 @@
 import { connect, Connection } from '@lancedb/lancedb';
 import path from 'path';
-import { childLogger } from "@workspace/core";
-import { config } from "@workspace/core";
-
-const log = childLogger({ module: "vector" });
+// We just use console.log/error or a simple logger here, since we don't want to rely on @workspace/core
+import { config } from '../config.js';
 
 let db: Connection | null = null;
 
@@ -12,7 +10,7 @@ export async function initVectorDB() {
     // Connect to LanceDB local instance
     const dbPath = path.resolve(process.cwd(), '.lancedb');
     db = await connect(dbPath);
-    log.info(`Connected to LanceDB at ${dbPath}`);
+    console.log(`Connected to LanceDB at ${dbPath}`);
   }
 }
 
@@ -73,7 +71,7 @@ export async function upsertProjectDocument(projectId: string, text: string, met
     table = await db.createTable('project_memory', data);
   }
 
-  log.info(`Upserted document for project ${projectId}`);
+  console.log(`Upserted document for project ${projectId}`);
 }
 
 export async function searchProjectMemory(projectId: string, query: string, topK: number = 3): Promise<any[]> {
@@ -108,7 +106,7 @@ export async function deleteProjectDocument(projectId: string, fileId: string): 
 
   const table = await db.openTable('project_memory');
   await table.delete(`projectId = '${projectId}' AND file_id = '${fileId}'`);
-  log.info({ projectId, fileId }, "Deleted old chunks from VectorDB");
+  console.log(`Deleted old chunks from VectorDB for ${projectId} / ${fileId}`);
 }
 
 export async function checkProjectDocumentExists(projectId: string, fileId: string): Promise<boolean> {
@@ -132,9 +130,6 @@ export async function getProjectDocumentMetadata(projectId: string): Promise<Rec
 
   const table = await db.openTable('project_memory');
   
-  // Try to query distinct file_id and their modified_time. 
-  // LanceDB currently doesn't support GROUP BY natively in the JS client for this,
-  // so we'll fetch all chunks for the project (only needed columns) and reduce them.
   const records = await table.query()
     .where(`projectId = '${projectId}' AND source = 'google_drive'`)
     .select(['file_id', 'modified_time'])

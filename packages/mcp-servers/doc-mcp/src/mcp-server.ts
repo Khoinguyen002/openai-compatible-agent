@@ -7,20 +7,11 @@ import {
 } from "./tools/driveTools.js";
 import { storeKnowledge, searchKnowledge } from "./tools/knowledgeTools.js";
 
-// Ensure environment variables are set
-const API_KEY = process.env.API_KEY;
-const DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
-
-if (!API_KEY) {
-  console.error(
-    "Missing API_KEY environment variable. The MCP server requires an API key for protection.",
-  );
-  process.exit(1);
-}
+const DRIVE_FOLDER_ID = process.env.DOC_MCP_DRIVE_FOLDER_ID;
 
 if (!DRIVE_FOLDER_ID) {
   console.error(
-    "Missing DRIVE_FOLDER_ID environment variable. The doc-agent requires a target folder ID.",
+    "Missing DOC_MCP_DRIVE_FOLDER_ID environment variable. The doc-agent requires a target folder ID.",
   );
   process.exit(1);
 }
@@ -31,14 +22,16 @@ const server = new McpServer({
 });
 
 // Register tools
-server.tool(
+server.registerTool(
   "search_drive_documents",
-  "Search for Google Drive documents in the configured folder.",
   {
-    keyword: z
-      .string()
-      .optional()
-      .describe("Optional keyword to search for in document titles"),
+    description: "Search for Google Drive documents in the configured folder.",
+    inputSchema: {
+      keyword: z
+        .string()
+        .optional()
+        .describe("Optional keyword to search for in document titles"),
+    },
   },
   async ({ keyword }) => {
     const res = await searchDriveDocuments(keyword);
@@ -54,11 +47,14 @@ server.tool(
   },
 );
 
-server.tool(
+server.registerTool(
   "ingest_drive_document",
-  "Ingest a specific Google Drive document into vector memory for semantic search.",
   {
-    fileId: z.string().describe("The Google Drive file ID to ingest"),
+    description:
+      "Ingest a specific Google Drive document into vector memory for semantic search.",
+    inputSchema: {
+      fileId: z.string().describe("The Google Drive file ID to ingest"),
+    },
   },
   async ({ fileId }) => {
     const res = await ingestDriveDocument(fileId);
@@ -74,11 +70,13 @@ server.tool(
   },
 );
 
-server.tool(
+server.registerTool(
   "store_knowledge",
-  "Store information or notes into the folder's vector memory.",
   {
-    content: z.string().describe("The knowledge content to store"),
+    description: "Store information or notes into the folder's vector memory.",
+    inputSchema: {
+      content: z.string().describe("The knowledge content to store"),
+    },
   },
   async ({ content }) => {
     const res = await storeKnowledge(content);
@@ -94,15 +92,18 @@ server.tool(
   },
 );
 
-server.tool(
+server.registerTool(
   "search_knowledge",
-  "Search the folder's vector memory for relevant context or knowledge.",
   {
-    query: z.string().describe("The search query"),
-    topK: z
-      .number()
-      .optional()
-      .describe("Number of results to return (default: 3)"),
+    description:
+      "Search the folder's vector memory for relevant context or knowledge.",
+    inputSchema: {
+      query: z.string().describe("The search query"),
+      topK: z
+        .number()
+        .optional()
+        .describe("Number of results to return (default: 3)"),
+    },
   },
   async ({ query, topK }) => {
     const res = await searchKnowledge(query, topK);

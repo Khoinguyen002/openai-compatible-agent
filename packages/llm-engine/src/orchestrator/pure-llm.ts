@@ -1,25 +1,20 @@
-import { config } from "@workspace/core";
 import { Request, Response } from "./types/index.js";
-
-const url = "https://openrouter.ai/api/v1/chat/completions";
-const options = {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${config.OPENROUTER_API_KEY}`,
-    "Content-Type": "application/json",
-  },
-};
 
 export interface LLMCallResult {
   response: Response;
   durationMs: number;
 }
 
-export const sendLLMRequest = async (request: Request): Promise<LLMCallResult> => {
+export const sendLLMRequest = async (request: Request, apiKey: string): Promise<LLMCallResult> => {
   const startedAt = Date.now();
+  const url = "https://openrouter.ai/api/v1/chat/completions";
 
   const httpResponse = await fetch(url, {
-    ...options,
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(request),
   });
 

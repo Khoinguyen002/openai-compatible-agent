@@ -10,7 +10,13 @@ let initialized = false;
 
 export async function initTools() {
   if (initialized) return;
-  await mcpManager.initialize(mcpConfigRaw as McpConfigSchema);
+  const { config } = await import("../config/index.js");
+  const getEnvVar = (key: string) => config[key as keyof typeof config] as string | undefined;
+  await mcpManager.initialize(
+    mcpConfigRaw as McpConfigSchema,
+    config.WORKSPACE_DIR,
+    getEnvVar
+  );
   initialized = true;
 }
 

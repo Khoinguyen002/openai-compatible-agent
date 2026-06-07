@@ -53,8 +53,10 @@ Use these for persistent, structured data: user preferences, agent state, config
 ### Vector Memory (Semantic Search)
 Use these for storing and recalling context that is best retrieved by meaning, not by key — e.g. project decisions, rules, conversations, research notes.
 
-- `store_project_knowledge` — store context into the current Project's vector DB.
-- `search_project_knowledge` — semantic search to recall information from the vector DB.
+- `store_knowledge` — store context into the current Project's vector DB.
+- `search_knowledge` — semantic search to recall information from the vector DB.
+- `search_drive_documents` — search for Google Drive documents in the configured folder.
+- `ingest_drive_document` — ingest a specific Google Drive document into vector memory.
 
 ### When to use which memory system
 
@@ -62,8 +64,8 @@ Use these for storing and recalling context that is best retrieved by meaning, n
 |---|---|
 | Store a setting, preference, or named value | `memory_write` |
 | Recall a specific key you know the name of | `memory_read` |
-| Store a decision, rule, or freeform context | `store_project_knowledge` |
-| Recall something by meaning or topic | `search_project_knowledge` |
+| Store a decision, rule, or freeform context | `store_knowledge` |
+| Recall something by meaning or topic | `search_knowledge` |
 
 ## File System
 
@@ -73,7 +75,7 @@ The MCP `local-filesystem` server provides full read/write access to `workspace/
 
 **IMPORTANT**: When a user refers to a "Project", they mean a **Virtual Memory Space** stored in the Vector DB — not a file folder. If the user asks for "project structure", clarify:
 - Do they want the **directory tree** (`workspace/`)? → use filesystem tools.
-- Do they want to **recall semantic context**? → use `search_project_knowledge`.
+- Do they want to **recall semantic context**? → use `search_knowledge`.
 
 ## ⚠️ MANDATORY: Skill Guides
 

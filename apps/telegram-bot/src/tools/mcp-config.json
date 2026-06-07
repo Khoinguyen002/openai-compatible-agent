@@ -34,6 +34,11 @@
         "${WORKSPACE_DIR}"
       ],
       "requireApproval": false
+    },
+    "doc-mcp": {
+      "command": "node",
+      "args": ["../../packages/mcp-servers/doc-mcp/dist/mcp-server.js"],
+      "requireApproval": true
     }
   }
 }

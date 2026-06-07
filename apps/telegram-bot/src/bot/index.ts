@@ -1,6 +1,6 @@
 import { Bot, webhookCallback, InlineKeyboard } from "grammy";
 import { randomUUID } from "crypto";
-import { config } from "@workspace/core";
+import { config } from "../config/index.js";
 import { childLogger } from "../logger.js";
 import { captureException } from "@workspace/core";
 import { verifyWebhookSecret } from "../gateway/verification.js";
@@ -43,26 +43,45 @@ function chunkText(text: string, limit: number) {
 type ReplyContext = {
   reply: (
     text: string,
-    options?: { parse_mode?: "Markdown" | "HTML"; reply_markup?: InlineKeyboard },
+    options?: {
+      parse_mode?: "Markdown" | "HTML";
+      reply_markup?: InlineKeyboard;
+    },
   ) => Promise<unknown>;
 };
 
 function sanitizeTelegramHtml(text: string): string {
   const supportedTags = [
-    'b', 'strong', 'i', 'em', 'code', 's', 'strike', 'del', 'u', 'pre', 
-    'a', 'span', 'tg-spoiler', 'tg-emoji', 'blockquote'
+    "b",
+    "strong",
+    "i",
+    "em",
+    "code",
+    "s",
+    "strike",
+    "del",
+    "u",
+    "pre",
+    "a",
+    "span",
+    "tg-spoiler",
+    "tg-emoji",
+    "blockquote",
   ];
-  
-  const validTags: string[] = [];
-  let sanitized = text.replace(/<\/?([a-zA-Z0-9-]+)[^>]*>/g, (match, tagName) => {
-    if (supportedTags.includes(tagName.toLowerCase())) {
-      validTags.push(match);
-      return `__VALID_TAG_${validTags.length - 1}__`;
-    }
-    return match;
-  });
 
-  sanitized = sanitized.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const validTags: string[] = [];
+  let sanitized = text.replace(
+    /<\/?([a-zA-Z0-9-]+)[^>]*>/g,
+    (match, tagName) => {
+      if (supportedTags.includes(tagName.toLowerCase())) {
+        validTags.push(match);
+        return `__VALID_TAG_${validTags.length - 1}__`;
+      }
+      return match;
+    },
+  );
+
+  sanitized = sanitized.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   sanitized = sanitized.replace(/__VALID_TAG_(\d+)__/g, (match, index) => {
     return validTags[parseInt(index)];
@@ -80,12 +99,13 @@ async function replyWithChunking(ctx: ReplyContext, message: string) {
 
   if (normalizedMessage.length <= TELEGRAM_MESSAGE_LIMIT) {
     const safeHtml = sanitizeTelegramHtml(normalizedMessage);
-    await ctx
-      .reply(safeHtml, { parse_mode: "HTML" })
-      .catch((e) => {
-        log.error({ err: e }, "Failed to send HTML formatted message, falling back to plain text");
-        return ctx.reply(normalizedMessage);
-      });
+    await ctx.reply(safeHtml, { parse_mode: "HTML" }).catch((e) => {
+      log.error(
+        { err: e },
+        "Failed to send HTML formatted message, falling back to plain text",
+      );
+      return ctx.reply(normalizedMessage);
+    });
     return;
   }
 
@@ -93,7 +113,9 @@ async function replyWithChunking(ctx: ReplyContext, message: string) {
 
   for (const chunk of chunks) {
     const safeHtml = sanitizeTelegramHtml(chunk);
-    await ctx.reply(safeHtml, { parse_mode: "HTML" }).catch(() => ctx.reply(chunk));
+    await ctx
+      .reply(safeHtml, { parse_mode: "HTML" })
+      .catch(() => ctx.reply(chunk));
   }
 }
 
@@ -119,13 +141,14 @@ bot.command("newchat", async (ctx) => {
   );
 });
 
-
-
 // --- Main message handler with buffering ---
-const messageBuffers = new Map<bigint, {
-  text: string[];
-  timer: NodeJS.Timeout;
-}>();
+const messageBuffers = new Map<
+  bigint,
+  {
+    text: string[];
+    timer: NodeJS.Timeout;
+  }
+>();
 
 bot.on("message", async (ctx, next) => {
   log.info({ update: ctx.update }, "received raw message update");
@@ -134,7 +157,7 @@ bot.on("message", async (ctx, next) => {
 
 bot.on("message:text", async (ctx) => {
   if (!ctx.from) return;
-  
+
   const userId = BigInt(ctx.from.id);
   const chatId = BigInt(ctx.chat.id);
   const text = ctx.message.text.trim();
@@ -146,7 +169,10 @@ bot.on("message:text", async (ctx) => {
     clearTimeout(existingBuffer.timer);
     existingBuffer.text.push(text);
   } else {
-    messageBuffers.set(userId, { text: [text], timer: setTimeout(() => {}, 0) });
+    messageBuffers.set(userId, {
+      text: [text],
+      timer: setTimeout(() => {}, 0),
+    });
   }
 
   const buffer = messageBuffers.get(userId)!;
@@ -157,9 +183,17 @@ bot.on("message:text", async (ctx) => {
   }, 1000); // Wait 1 second for any remaining chunks
 });
 
-async function processUserMessage(ctx: any, userId: bigint, chatId: bigint, text: string) {
+async function processUserMessage(
+  ctx: any,
+  userId: bigint,
+  chatId: bigint,
+  text: string,
+) {
   const requestId = randomUUID();
   const reqLog = log.child({ requestId });
+
+  // Show typing indicator (best-effort, non-blocking)
+  ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => undefined);
 
   reqLog.info(
     {
@@ -180,9 +214,6 @@ async function processUserMessage(ctx: any, userId: bigint, chatId: bigint, text
     return;
   }
 
-  // Show typing indicator (best-effort, non-blocking)
-  ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => undefined);
-
   // Resolve or create session
   const sessionId = await resolveOrCreateSession(chatId, userId);
 
@@ -193,8 +224,6 @@ async function processUserMessage(ctx: any, userId: bigint, chatId: bigint, text
       }, 4_000);
 
       try {
-
-
         await orchestrate({
           sessionId,
           userMessage: text,
@@ -235,7 +264,9 @@ function getOrchestrateEvents(ctx: ReplyContext, sessionId: string) {
         await replyWithChunking(ctx, choice.content);
       }
       if (choice.tool_calls) {
-        const batchNeedsApproval = choice.tool_calls.some((tc: any) => tc.requiresApproval);
+        const batchNeedsApproval = choice.tool_calls.some(
+          (tc: any) => tc.requiresApproval,
+        );
         // If ANY tool in the batch needs approval, skip all "Calling tool" messages.
         // The approval alert will show the full batch so user knows what will execute.
         if (!batchNeedsApproval) {
