@@ -5,15 +5,8 @@ import { join } from "path";
 import { MEMORY_DATA_DIR } from "@workspace/core";
 
 function findWorkspaceGuidesDir(): string {
-  let currentDir = process.cwd();
-  while (true) {
-    const p = join(currentDir, "workspace", "guides");
-    if (existsSync(p)) return p;
-    const parent = path.dirname(currentDir);
-    if (parent === currentDir) break;
-    currentDir = parent;
-  }
-  return join(process.cwd(), "workspace", "guides");
+  // Enforce using the local app workspace
+  return path.resolve(process.cwd(), "workspace", "guides");
 }
 
 function readGuide(filename: string): string {
@@ -96,13 +89,6 @@ export async function getChatPrompt(): Promise<string> {
   const memoryIndex = await loadMemoryIndex();
   return (
     `${BASE_SYSTEM_PROMPT}\n\n` +
-    "You are a Personal Assistant running in Telegram.\n" +
-    "You are confined to the `workspace` directory.\n" +
-    "\n### MEMORY & PROFILE INSTRUCTIONS\n" +
-    "1. You have the ability to remember things permanently using the `memory_write` tool.\n" +
-    "2. If the user tells you about their preferences, their name, or how they want you to behave, PROACTIVELY use `memory_write` to save this to the `profile` namespace.\n" +
-    "3. You can set up scheduled tasks and reminders using the `register_cron` tool. If the user asks for a daily summary or a reminder, create a cron!\n" +
-    "4. ALWAYS check `memory_read` if you need to recall context about the user's profile.\n" +
     memoryIndex
   );
 }
@@ -113,9 +99,9 @@ export async function getCronPrompt(): Promise<string> {
     `${BASE_SYSTEM_PROMPT}\n\n` +
     "CRITICAL RULES FOR CRON CONTEXT:\n" +
     "- You are running automatically on a schedule. NEVER create, modify, or delete extensions (tools or crons) — register_tool, register_cron, and delete_extension are completely disabled in this context.\n" +
-    "- Your scheduled task instructions are provided below. Execute them immediately.\n" +
+    "- The user message below is the pre-configured task prompt; treat it as instructions to execute, NOT as a user requesting new scheduled jobs.\n" +
     "- Focus solely on completing the scheduled task. You may use any available tools (search, read files, etc.) to gather information.\n" +
-    "- TELEGRAM NOTIFICATION RULE: If your final goal is to report back to the user, you MUST explicitly call the `send_telegram_message` tool. Writing plain text or JSON as your normal response does NOT send anything to Telegram." +
+    "- TELEGRAM NOTIFICATION RULE: If your final goal is to report back to the user, you MUST explicitly call the `send_telegram_message` tool. Writing plain text or JSON as your normal response does NOT send anything to Telegram.\n" +
     memoryIndex
   );
 }

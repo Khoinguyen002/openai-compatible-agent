@@ -38,7 +38,7 @@ export const telegramBotToolDeclarations = [
             .record(z.string(), z.any())
             .describe("JSON Schema for inputs."),
           code: z.string().describe(
-            "Pure JS code execution logic. IMPORTANT: Read workspace/guides/tools.md first for the required template, argument parsing convention, and output format before writing any code.",
+            "Pure JS code execution logic. IMPORTANT: MUST read workspace/skills/tools/guide.md first for the required template, argument parsing convention, and output format before writing any code.",
           ),
         })
         .toJSONSchema(),
@@ -49,7 +49,7 @@ export const telegramBotToolDeclarations = [
     function: {
       name: "register_cron",
       description:
-        "Schedule a periodic prompt to be executed by the LLM and sent to Telegram.",
+        "Schedule a periodic prompt to be executed by the LLM and sent to Telegram. IMPORTANT: MUST read workspace/skills/cron/guide.md before calling this tool.",
       parameters: z
         .object({
           name: z

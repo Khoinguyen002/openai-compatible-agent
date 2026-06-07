@@ -10,14 +10,9 @@ The working directory is always the **project root**. All paths must be prefixed
 - ✅ `read_file("workspace/skills/tools/guide.md")`
 - ❌ `read_file("tools/guide.md")` ← wrong, missing prefix
 
-## Tools Available
+## Tool Reference
 
-| Tool | Purpose |
-|---|---|
-| `register_tool` | Create or update a dynamic tool |
-| `delete_extension` (type: "tool") | Permanently remove a tool |
-| `toggle_extension` (type: "tool") | Enable or disable without deleting |
-| `list_extensions` | List all registered tools and cron jobs |
+**⚠️ READ YOUR TOOL DESCRIPTIONS**: For exact parameters and usage, read the schemas for `register_tool`, `delete_extension`, `toggle_extension`, and `list_extensions` provided in your runtime environment. **Do not hallucinate parameters.**
 
 ## Deploying a Custom Tool
 
@@ -25,7 +20,7 @@ Call `register_tool`. The server writes the script to `workspace/skills/tools/im
 
 ### Code Template
 
-The `code` parameter must be **pure JavaScript**. Input arrives via `process.argv[2]` (base64-encoded JSON). Output must be a single `console.log(JSON.stringify(...))`.
+The custom code must be **pure JavaScript**. Input arrives via `process.argv[2]` (base64-encoded JSON). Output must be a single `console.log(JSON.stringify(...))`.
 
 ```javascript
 const base64Args = process.argv[2];
@@ -47,10 +42,6 @@ main().catch((err) => {
   process.exit(1);
 });
 ```
-
-### Deleting a Tool
-
-Call `delete_extension` with `type: "tool"` and the target `name`. The server removes the script file and prunes the registry.
 
 ---
 
