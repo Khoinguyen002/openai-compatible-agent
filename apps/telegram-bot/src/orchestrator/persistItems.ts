@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/client.js";
-import { childLogger } from "@workspace/core";
+import { childLogger } from "../logger.js";
 import { NonStreamingChoice, ToolMessage, UserMessage } from "@workspace/llm-engine";
 
 export async function persistItems(

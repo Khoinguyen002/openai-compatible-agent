@@ -1,9 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import mcpConfig from "./mcp-config.json" with { type: "json" };
-import { childLogger } from "@workspace/core";
-import { Tool } from "../../orchestrator/types/index.js";
-import { config } from "@workspace/core";
+import { childLogger } from "../logger/index.js";
+import { config } from "../config/index.js";
 import path from "node:path";
 
 const log = childLogger({ module: "McpManager" });
@@ -27,15 +25,24 @@ function resolvePlaceholders(value: string): string {
   });
 }
 
-interface ServerConfig {
+export interface ServerConfig {
   command: string;
   args: string[];
   env?: Record<string, string>;
   requireApproval?: boolean;
 }
 
-interface ConfigSchema {
+export interface McpConfigSchema {
   mcpServers: Record<string, ServerConfig>;
+}
+
+export interface FormattedTool {
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters?: any;
+  };
 }
 
 export class McpManager {
@@ -44,11 +51,10 @@ export class McpManager {
   // Set of sensitive tools that require Human-in-the-Loop approval
   private approvalRequiredTools = new Set<string>();
   // Array containing all tool schemas formatted for OpenRouter
-  public systemTools: Tool[] = [];
+  public systemTools: FormattedTool[] = [];
 
-  async initialize() {
-    const config: ConfigSchema = mcpConfig;
-    const serverEntries = Object.entries(config.mcpServers);
+  async initialize(mcpConfig: McpConfigSchema) {
+    const serverEntries = Object.entries(mcpConfig.mcpServers || {});
     const failedServers = new Set<string>();
 
     await Promise.all(

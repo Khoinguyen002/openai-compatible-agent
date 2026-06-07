@@ -1,24 +1,14 @@
 import { toolDeclarations } from "./declaration.js";
-import { getDynamicToolsDeclaration } from "./helpers.js";
-import { McpManager } from "./mcp/McpManager.js";
 
 type SystemToolName = (typeof toolDeclarations)[number]["function"]["name"];
 
-export const mcpManager = new McpManager();
-await mcpManager.initialize();
-
-export const getTools = async (opts?: { excludedNames: SystemToolName[] }) => {
-  const systemTools = toolDeclarations;
-  const dynamicTools = await getDynamicToolsDeclaration();
-
-  const all = [...systemTools, ...dynamicTools, ...mcpManager.systemTools];
-
+export const getBaseTools = (opts?: { excludedNames?: SystemToolName[] }) => {
   if (opts?.excludedNames) {
-    return all.filter((t) => !opts.excludedNames.includes(t.function.name));
+    return toolDeclarations.filter(
+      (t) => !opts.excludedNames!.includes(t.function.name as SystemToolName),
+    );
   }
-
-  return all;
+  return toolDeclarations;
 };
 
-export * from "./implementations/index.js";
-export * from "./implementations/fsTools.js";
+export * from "./declaration.js";

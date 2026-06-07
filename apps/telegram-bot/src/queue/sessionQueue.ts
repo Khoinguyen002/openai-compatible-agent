@@ -1,4 +1,4 @@
-import { childLogger } from "@workspace/core";
+import { childLogger } from "../logger.js";
 
 const log = childLogger({ module: 'sessionQueue' });
 

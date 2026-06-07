@@ -73,15 +73,15 @@ export const extensionImplementations = {
     name: string;
     expression: string;
     description: string;
-    prompt: string;
+    developerPrompt: string;
     active?: boolean;
   }) => {
     try {
-      const { name, expression, description, prompt, active = true } = args;
+      const { name, expression, description, developerPrompt, active = true } = args;
 
       const currentCrons = await readRegistry(CRON_DECLARATION);
       const filteredCrons = currentCrons.filter((c: any) => c.name !== name);
-      filteredCrons.push({ name, expression, description, prompt, active });
+      filteredCrons.push({ name, expression, description, developerPrompt, active });
 
       await fs.mkdir(path.dirname(CRON_DECLARATION), { recursive: true });
       await fs.writeFile(CRON_DECLARATION, JSON.stringify(filteredCrons, null, 2), "utf-8");

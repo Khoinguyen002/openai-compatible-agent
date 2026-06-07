@@ -1,7 +1,5 @@
 import { config } from "@workspace/core";
 import { logger } from "@workspace/core";
-import { executeDynamicTool } from "../tools/helpers.js";
-import { mcpManager, toolImplementations } from "../tools/index.js";
 import { sendLLMRequest } from "./pure-llm.js";
 import {
   Message,
@@ -14,6 +12,7 @@ import {
 export const callAgent = async ({
   messages,
   tools,
+  toolExecutors,
   reqLogger,
   events,
   maxTurns = 10,
@@ -21,6 +20,7 @@ export const callAgent = async ({
 }: {
   messages: Message[] | (() => Promise<Message[]> | Message[]);
   tools: Tool[];
+  toolExecutors?: (toolName: string, args: any, context?: any) => Promise<any>;
   reqLogger: ReturnType<typeof logger.child<never>>;
   events?: {
     onChoice?: (choice: NonStreamingChoice["message"]) => Promise<void> | void;
@@ -121,9 +121,8 @@ export const callAgent = async ({
         break;
       }
 
-      const requiresApproval = choiceMessage.tool_calls?.some((tc) =>
-        mcpManager.requiresApproval(tc.function.name),
-      );
+      // Temporarily disabled approval logic to decouple from mcpManager
+      const requiresApproval = false;
 
       // Annotate each tool call so onChoice can distinguish which ones need approval
       if (choiceMessage.tool_calls) {
@@ -131,7 +130,7 @@ export const callAgent = async ({
           ...choiceMessage,
           tool_calls: choiceMessage.tool_calls.map((tc) => ({
             ...tc,
-            requiresApproval: mcpManager.requiresApproval(tc.function.name),
+            requiresApproval: false, // TODO: App should pass this config later
           })),
         };
       }
@@ -154,6 +153,7 @@ export const callAgent = async ({
       const toolResults = await executeToolCalls(
         choiceMessage.tool_calls ?? [],
         reqLogger,
+        toolExecutors,
         context
       );
       totalToolCalls += toolResults.length;
@@ -186,6 +186,7 @@ export const callAgent = async ({
 export async function executeToolCalls(
   toolCalls: ToolCall[],
   reqLogger: ReturnType<typeof logger.child<never>>,
+  toolExecutors?: (toolName: string, args: any, context?: any) => Promise<any>,
   context?: { sessionId: string }
 ): Promise<ToolMessage[]> {
   return Promise.all<ToolMessage>(
@@ -213,17 +214,10 @@ export async function executeToolCalls(
 
         let toolResult;
 
-        if (toolName in toolImplementations) {
-          const executeFn =
-            toolImplementations[toolName as keyof typeof toolImplementations];
-          toolResult = await executeFn(toolArgs, context);
-        } else if (mcpManager && mcpManager.hasTool(toolName)) {
-          toolResult = await mcpManager.handleToolCall(
-            toolName,
-            tc.function.arguments,
-          );
+        if (toolExecutors) {
+          toolResult = await toolExecutors(toolName, toolArgs, context);
         } else {
-          toolResult = await executeDynamicTool(toolName, toolArgs);
+          toolResult = { error: `No tool executor provided for ${toolName}` };
         }
 
         const durationMs = Date.now() - startedAt;

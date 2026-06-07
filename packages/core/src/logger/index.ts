@@ -3,39 +3,43 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "../config/index.js";
 
-const LOG_DIR = path.resolve(process.cwd(), "logs");
-const LOG_FILE = path.join(LOG_DIR, "agent.log");
+export function createLogger(appName: string, logDirPath?: string) {
+  const finalLogDir = logDirPath || path.resolve(process.cwd(), "logs");
+  const logFile = path.join(finalLogDir, `${appName}.log`);
 
-fs.mkdirSync(LOG_DIR, { recursive: true });
+  fs.mkdirSync(finalLogDir, { recursive: true });
 
-const targets: pino.TransportTargetOptions[] = [
-  // File with size-based rotation — 100MB max, keep last 5 files
-  {
-    target: "pino-roll",
-    level: config.LOG_LEVEL,
-    options: {
-      file: LOG_FILE,
-      size: "100m",
-      limit: { count: 5 },
+  const targets: pino.TransportTargetOptions[] = [
+    {
+      target: "pino-roll",
+      level: config.LOG_LEVEL || "info",
+      options: {
+        file: logFile,
+        size: "100m",
+        limit: { count: 5 },
+      },
     },
-  },
-];
+  ];
 
-if (config.NODE_ENV !== "production") {
-  targets.push({
-    target: "pino-pretty",
-    level: config.LOG_LEVEL,
-    options: { colorize: true, translateTime: "SYS:standard" },
-  });
+  if (config.NODE_ENV !== "production") {
+    targets.push({
+      target: "pino-pretty",
+      level: config.LOG_LEVEL || "info",
+      options: { colorize: true, translateTime: "SYS:standard" },
+    });
+  }
+
+  return pino(
+    {
+      level: config.LOG_LEVEL || "info",
+      base: { app: appName },
+    },
+    pino.transport({ targets }),
+  );
 }
 
-export const logger = pino(
-  {
-    level: config.LOG_LEVEL,
-    base: { service: "telegram-agent" },
-  },
-  pino.transport({ targets }),
-);
+// Global default logger for core/generic usage
+export const logger = createLogger("agent");
 
 export function childLogger(bindings: Record<string, unknown>) {
   return logger.child(bindings);

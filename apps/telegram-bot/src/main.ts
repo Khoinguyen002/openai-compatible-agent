@@ -1,19 +1,19 @@
 import http from "http";
 import { config } from "@workspace/core";
-import { logger } from "@workspace/core";
+import { logger } from "./logger.js";
 import { initSentry } from "@workspace/core";
 import { bot, createWebhookHandler } from "./bot/index.js";
 import { resetDailyRequestCounts } from "./gateway/rateLimit.js";
 import { expireIdleSessions } from "./orchestrator/session.js";
 import { prisma } from "./db/client.js";
+import "./cron/cronManager.js";
 
 async function main() {
   initSentry();
 
   // Initialize workspace dirs
   try {
-    const { initWorkspace } =
-      await import("@workspace/llm-engine");
+    const { initWorkspace } = await import("./tools/index.js");
     await initWorkspace();
   } catch (err) {
     logger.warn({ err }, "workspace init skipped or failed");
@@ -32,6 +32,14 @@ async function main() {
     { env: config.NODE_ENV, model: config.MODEL_ID },
     "agent starting",
   );
+
+  try {
+    const { initTools } = await import("./tools/index.js");
+    await initTools();
+    logger.info("app tools initialized");
+  } catch (err) {
+    logger.error({ err }, "tool initialization failed");
+  }
 
   // --- Schedule recurring jobs ---
   scheduleJobs();

@@ -1,5 +1,5 @@
 import { config } from "@workspace/core";
-import { logger } from "@workspace/core";
+import { logger } from "../logger.js";
 
 async function sendTelegramMessage(text: string, parseMode?: string) {
   const chatId = config.TELEGRAM_BOT_CHAT_ID;
@@ -67,4 +67,3 @@ export const telegramTools: Record<string, (args: any) => Promise<any>> = {
     }
   },
 };
-

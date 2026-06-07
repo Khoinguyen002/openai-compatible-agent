@@ -3,7 +3,7 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { join } from "node:path";
 import fs from "node:fs";
 import { config } from "@workspace/core";
-import { childLogger } from "@workspace/core";
+import { childLogger } from "../logger.js";
 
 const log = childLogger({ module: "db" });
 

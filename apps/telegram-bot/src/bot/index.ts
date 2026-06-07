@@ -1,7 +1,7 @@
 import { Bot, webhookCallback, InlineKeyboard } from "grammy";
 import { randomUUID } from "crypto";
 import { config } from "@workspace/core";
-import { childLogger } from "@workspace/core";
+import { childLogger } from "../logger.js";
 import { captureException } from "@workspace/core";
 import { verifyWebhookSecret } from "../gateway/verification.js";
 import { checkRateLimit } from "../gateway/rateLimit.js";

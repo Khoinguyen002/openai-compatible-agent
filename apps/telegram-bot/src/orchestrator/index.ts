@@ -1,8 +1,10 @@
 import { config } from "@workspace/core";
-import { childLogger } from "@workspace/core";
+import { childLogger } from "../logger.js";
 import { hydrateContext } from "./hydrate.js";
 import { persistItems } from "./persistItems.js";
-import { Message, callAgent, executeToolCalls, getTools, getChatPrompt } from "@workspace/llm-engine";
+import { Message, callAgent, executeToolCalls } from "@workspace/llm-engine";
+import { getTools, executeTool } from "../tools/index.js";
+import { getChatPrompt } from "../prompts/index.js";
 import { prisma } from "../db/client.js";
 
 const log = childLogger({ module: "orchestrator" });
@@ -38,7 +40,8 @@ export async function orchestrate(
   } = opts;
   const reqLog = log.child({ sessionId, requestId });
   const start = Date.now();
-  const tools = await getTools({ excludedNames: ["send_telegram_message"] });
+  const allTools = await getTools();
+  const tools = allTools.filter(t => t.function.name !== "send_telegram_message");
 
   reqLog.info({ preview: userMessage.slice(0, 80) }, "agent loop start");
 
@@ -54,7 +57,7 @@ export async function orchestrate(
     ) {
       let toolResults;
       if (resumeAction === "approve") {
-        toolResults = await executeToolCalls(lastMsg.tool_calls, reqLog, { sessionId });
+        toolResults = await executeToolCalls(lastMsg.tool_calls, reqLog, executeTool, { sessionId });
       } else {
         toolResults = lastMsg.tool_calls.map((tc: any) => ({
           role: "tool" as const,
@@ -101,6 +104,7 @@ export async function orchestrate(
   const results = await callAgent({
     messages: getFullHistory,
     tools,
+    toolExecutors: executeTool,
     reqLogger: reqLog,
     events: {
       async onChoice(choiceMessage) {

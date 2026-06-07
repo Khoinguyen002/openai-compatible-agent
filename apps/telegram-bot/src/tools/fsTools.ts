@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "node:fs/promises";
 import { config } from "@workspace/core";
-import { childLogger } from "@workspace/core";
+import { childLogger } from "../logger.js";
 
 const log = childLogger({ module: "fsTools" });
 

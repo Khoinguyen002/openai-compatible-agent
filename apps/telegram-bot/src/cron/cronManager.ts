@@ -2,10 +2,10 @@ import cron from "node-cron";
 import fs from "node:fs/promises";
 import { callAgent } from "@workspace/llm-engine";
 import { Message } from "@workspace/llm-engine";
-import { childLogger } from "@workspace/core";
+import { childLogger } from "../logger.js";
 import { CRON_DECLARATION } from "@workspace/core";
-import { getCronPrompt } from "@workspace/llm-engine";
-
+import { getCronPrompt } from "../prompts/index.js";
+import { getTools, executeTool } from "../tools/index.js";
 const scheduledTasks = new Map<string, cron.ScheduledTask>();
 const log = childLogger({ module: "cron" });
 
@@ -25,14 +25,17 @@ export async function syncCronScheduler(): Promise<void> {
 
     const cronList = JSON.parse(content || "[]");
     const timezone = process.env.TZ || "Asia/Ho_Chi_Minh";
-    const tools = await (
-      await import("@workspace/llm-engine").then((mod) => mod.getTools)
-    )({
-      excludedNames: ["register_tool", "register_cron", "delete_extension"],
-    });
+    const allTools = await getTools();
+    const tools = allTools.filter(
+      (t: any) =>
+        !["register_tool", "register_cron", "delete_extension"].includes(
+          t.function.name,
+        ),
+    );
 
     for (const job of cronList) {
-      const { name, expression, prompt, active = true } = job;
+      const { name, expression, developerPrompt, systemPrompt, prompt, active = true } = job;
+      const actualPrompt = developerPrompt || systemPrompt || prompt;
 
       if (active === false) {
         log.debug({ name }, "[cron] skipping disabled job");
@@ -53,13 +56,17 @@ export async function syncCronScheduler(): Promise<void> {
                 role: "system",
                 content: await getCronPrompt(),
               },
-              { role: "system", content: prompt },
+              {
+                role: "developer",
+                content: "CRON TASK TO EXECUTE:\n" + actualPrompt,
+              },
             ];
 
             const { reply } = await callAgent({
               reqLogger: log,
               messages: () => messages,
               tools,
+              toolExecutors: executeTool,
               events: {
                 onChoice(choice) {
                   messages.push({
