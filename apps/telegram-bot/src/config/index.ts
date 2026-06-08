@@ -17,8 +17,7 @@ const schema = z.object({
   // OpenRouter
   OPENROUTER_API_KEY: z.string().min(1),
 
-  // Database — accepts SQLite file paths (file:./dev.db) or standard URLs
-  DATABASE_URL: z.string().min(1),
+  DATABASE_URL: z.string().min(1).default("file:prisma/dev.db"),
 
   // Agent behavior
   MODEL_ID: z.string().default("openai/gpt-oss-120b:free"),
@@ -59,7 +58,7 @@ const schema = z.object({
 
   // Google Drive JIT Integration (doc-mcp)
   DOC_MCP_DRIVE_FOLDER_ID: z.string().optional(),
-  DOC_MCP_GOOGLE_CLIENT_EMAIL: z.string().email().optional(),
+  DOC_MCP_GOOGLE_CLIENT_EMAIL: z.string().optional(),
   DOC_MCP_GOOGLE_PRIVATE_KEY: z.string().optional(),
 
   // Vector DB Chunking
