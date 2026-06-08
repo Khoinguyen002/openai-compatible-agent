@@ -3,12 +3,19 @@
   "version": "1.0.0",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "doc-mcp": "./dist/mcp-server.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/mcp-server.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@lancedb/lancedb": "^0.30.0",
+    "@langchain/textsplitters": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "googleapis": "^173.0.0",
+    "zod": "^4.4.3"
   },
   "types": "dist/index.d.ts",
   "exports": {

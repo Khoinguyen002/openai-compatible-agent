@@ -1,18 +1,17 @@
 import * as Sentry from '@sentry/node';
-import { config } from '../config/index.js';
-import { logger } from '../logger/index.js';
+import type { Logger } from 'pino';
 
-export function initSentry() {
-  if (!config.SENTRY_DSN) {
-    logger.debug('Sentry DSN not set — error tracking disabled');
+export function initSentry(dsn: string | undefined, env: string, logger?: Logger) {
+  if (!dsn) {
+    logger?.debug('Sentry DSN not set — error tracking disabled');
     return;
   }
   Sentry.init({
-    dsn: config.SENTRY_DSN,
-    environment: config.NODE_ENV,
+    dsn: dsn,
+    environment: env,
     tracesSampleRate: 0.1,
   });
-  logger.info('Sentry initialized');
+  logger?.info('Sentry initialized');
 }
 
 export function captureException(

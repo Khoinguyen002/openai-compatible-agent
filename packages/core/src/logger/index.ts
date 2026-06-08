@@ -1,9 +1,16 @@
 import pino from "pino";
 import fs from "node:fs";
 import path from "node:path";
-import { config } from "../config/index.js";
 
-export function createLogger(appName: string, logDirPath?: string) {
+export interface LoggerOptions {
+  appName: string;
+  logLevel?: string;
+  isProd?: boolean;
+  logDirPath?: string;
+}
+
+export function createLogger(options: LoggerOptions): pino.Logger {
+  const { appName, logLevel = "info", isProd = false, logDirPath } = options;
   const finalLogDir = logDirPath || path.resolve(process.cwd(), "logs");
   const logFile = path.join(finalLogDir, `${appName}.log`);
 
@@ -12,7 +19,7 @@ export function createLogger(appName: string, logDirPath?: string) {
   const targets: pino.TransportTargetOptions[] = [
     {
       target: "pino-roll",
-      level: config.LOG_LEVEL || "info",
+      level: logLevel,
       options: {
         file: logFile,
         size: "100m",
@@ -21,26 +28,19 @@ export function createLogger(appName: string, logDirPath?: string) {
     },
   ];
 
-  if (config.NODE_ENV !== "production") {
+  if (!isProd) {
     targets.push({
       target: "pino-pretty",
-      level: config.LOG_LEVEL || "info",
+      level: logLevel,
       options: { colorize: true, translateTime: "SYS:standard" },
     });
   }
 
   return pino(
     {
-      level: config.LOG_LEVEL || "info",
+      level: logLevel,
       base: { app: appName },
     },
     pino.transport({ targets }),
   );
-}
-
-// Global default logger for core/generic usage
-export const logger = createLogger("agent");
-
-export function childLogger(bindings: Record<string, unknown>) {
-  return logger.child(bindings);
 }

@@ -4,7 +4,9 @@ import { telegramBotToolDeclarations } from "./declaration.js";
 import { getDynamicToolsDeclaration } from "./helpers.js";
 import mcpConfigRaw from "./mcp-config.json" with { type: "json" };
 
-export const mcpManager = new McpManager();
+import { logger } from "../logger.js";
+
+export const mcpManager = new McpManager(logger);
 
 let initialized = false;
 

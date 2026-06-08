@@ -1,4 +1,4 @@
-import { logger } from "@workspace/core";
+import type { Logger } from "pino";
 import { sendLLMRequest } from "./pure-llm.js";
 import {
   Message,
@@ -16,11 +16,13 @@ export const callAgent = async ({
   events,
   maxTurns = 10,
   context,
+  apiKey,
+  modelId,
 }: {
   messages: Message[] | (() => Promise<Message[]> | Message[]);
   tools: Tool[];
   toolExecutors?: (toolName: string, args: any, context?: any) => Promise<any>;
-  reqLogger: ReturnType<typeof logger.child<never>>;
+  reqLogger: Logger;
   events?: {
     onChoice?: (choice: NonStreamingChoice["message"]) => Promise<void> | void;
     onToolCallSuccess?: (
@@ -186,7 +188,7 @@ export const callAgent = async ({
 
 export async function executeToolCalls(
   toolCalls: ToolCall[],
-  reqLogger: ReturnType<typeof logger.child<never>>,
+  reqLogger: Logger,
   toolExecutors?: (toolName: string, args: any, context?: any) => Promise<any>,
   context?: { sessionId: string }
 ): Promise<ToolMessage[]> {

@@ -1,13 +1,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { childLogger } from "../logger/index.js";
-import path from "node:path";
-
-const log = childLogger({ module: "McpManager" });
+import type { Logger } from "pino";
 
 export type PlaceholderResolver = (key: string) => string | undefined;
 
-function createPlaceholderResolver(workspaceDir: string, getEnvVar: PlaceholderResolver) {
+function createPlaceholderResolver(workspaceDir: string, getEnvVar: PlaceholderResolver, log: Logger) {
   return (value: string): string => {
     return value.replace(/\$\{([^}]+)\}/g, (match, key) => {
       if (key === "WORKSPACE_DIR") return workspaceDir;
@@ -42,12 +39,17 @@ export interface FormattedTool {
 }
 
 export class McpManager {
+  private log: Logger;
   // Map for quick lookup: tool_name -> MCP Client instance
   private toolToClientMap = new Map<string, Client>();
   // Set of sensitive tools that require Human-in-the-Loop approval
   private approvalRequiredTools = new Set<string>();
   // Array containing all tool schemas formatted for OpenRouter
   public systemTools: FormattedTool[] = [];
+
+  constructor(logger: Logger) {
+    this.log = logger.child({ module: "McpManager" });
+  }
 
   async initialize(
     mcpConfig: McpConfigSchema,
@@ -56,7 +58,7 @@ export class McpManager {
   ) {
     const serverEntries = Object.entries(mcpConfig.mcpServers || {});
     const failedServers = new Set<string>();
-    const resolvePlaceholders = createPlaceholderResolver(workspaceDir, getEnvVar);
+    const resolvePlaceholders = createPlaceholderResolver(workspaceDir, getEnvVar, this.log);
 
     await Promise.all(
       serverEntries.map(async ([serverName, serverConfig]) => {
@@ -109,13 +111,13 @@ export class McpManager {
             loadedTools.push(tool.name);
           }
 
-          log.debug(
+          this.log.debug(
             { server: serverName, tools: loadedTools },
             "[MCP] Server connected.",
           );
         } catch (error: any) {
           failedServers.add(serverName);
-          log.warn(
+          this.log.warn(
             { server: serverName, err: error.message },
             "[MCP] Server unavailable — skipping.",
           );
@@ -124,7 +126,7 @@ export class McpManager {
     );
 
     const connectedCount = serverEntries.length - failedServers.size;
-    log.info(
+    this.log.info(
       {
         tools: this.systemTools.length,
         servers: `${connectedCount}/${serverEntries.length}`,

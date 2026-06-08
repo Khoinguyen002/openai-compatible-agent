@@ -9,7 +9,7 @@ import { prisma } from "./db/client.js";
 import "./cron/cronManager.js";
 
 async function main() {
-  initSentry();
+  initSentry(config.SENTRY_DSN, config.NODE_ENV, logger);
 
   // Initialize workspace dirs
   try {

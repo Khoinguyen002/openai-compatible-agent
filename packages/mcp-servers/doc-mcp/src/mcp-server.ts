@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -6,8 +7,9 @@ import {
   ingestDriveDocument,
 } from "./tools/driveTools.js";
 import { storeKnowledge, searchKnowledge } from "./tools/knowledgeTools.js";
+import { config } from "./config.js";
 
-const DRIVE_FOLDER_ID = process.env.DOC_MCP_DRIVE_FOLDER_ID;
+const DRIVE_FOLDER_ID = config.DOC_MCP_DRIVE_FOLDER_ID;
 
 if (!DRIVE_FOLDER_ID) {
   console.error(

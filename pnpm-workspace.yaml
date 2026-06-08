@@ -1,15 +1,19 @@
 packages:
-  - "apps/*"
-  - "packages/*"
-  - "packages/agents/*"
-  - "packages/mcp-servers/*"
-
+  - apps/*
+  - packages/*
+  - packages/agents/*
+  - packages/mcp-servers/*
 allowBuilds:
-  "0": "@prisma/engines"
-  "1": better-sqlite3
-  "2": esbuild
-  "3": prisma
-  "@prisma/engines": true
+  '0': '@prisma/engines'
+  '1': better-sqlite3
+  '2': esbuild
+  '3': prisma
+  '@prisma/engines': true
   better-sqlite3: true
   esbuild: true
   prisma: false
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - better-sqlite3
+  - esbuild
+  - prisma
