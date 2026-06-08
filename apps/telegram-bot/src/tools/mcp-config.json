@@ -34,11 +34,6 @@
         "${WORKSPACE_DIR}"
       ],
       "requireApproval": false
-    },
-    "doc-mcp": {
-      "command": "npx",
-      "args": ["-y", "@khoinguyen2002/doc-mcp@latest"],
-      "requireApproval": true
     }
   }
 }
