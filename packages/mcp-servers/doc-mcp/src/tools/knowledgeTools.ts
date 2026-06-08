@@ -1,6 +1,7 @@
 import { upsertProjectDocument, searchProjectMemory } from "../db/vector.js";
+import { syncFolderState } from "./driveTools.js";
 
-export async function storeKnowledge(content: string) {
+export async function saveAgentNote(content: string) {
   const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
     return { success: false, error: "DOC_MCP_DRIVE_FOLDER_ID is not configured." };
@@ -11,9 +12,9 @@ export async function storeKnowledge(content: string) {
     await upsertProjectDocument(folderId, content, {
       source: "agent",
     });
-    return { success: true, message: "Successfully stored in folder memory." };
+    return { success: true, message: "Successfully stored note in vector memory." };
   } catch (err: any) {
-    return { success: false, error: `Failed to store: ${err.message}` };
+    return { success: false, error: `Failed to store note: ${err.message}` };
   }
 }
 
@@ -24,6 +25,9 @@ export async function searchKnowledge(query: string, topK: number = 3) {
   }
 
   try {
+    // Auto-sync folder state before searching
+    await syncFolderState(folderId);
+
     const results = await searchProjectMemory(folderId, query, topK);
 
     if (!results || results.length === 0) {

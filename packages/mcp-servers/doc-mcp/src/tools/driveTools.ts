@@ -31,7 +31,7 @@ function getDriveClient() {
   return google.drive({ version: "v3", auth });
 }
 
-export async function searchDriveDocuments(keyword?: string) {
+export async function listDriveFiles(keyword?: string) {
   const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
     return {
@@ -69,36 +69,19 @@ export async function searchDriveDocuments(keyword?: string) {
   }
 }
 
-export async function ingestDriveDocument(fileId: string) {
-  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
-  if (!folderId) {
-    return {
-      success: false,
-      error: "DOC_MCP_DRIVE_FOLDER_ID is not configured for this agent.",
-    };
-  }
+export async function syncSingleDocument(fileId: string, folderId: string) {
+  const drive = getDriveClient();
+  const fileInfo = await drive.files.get({
+    fileId,
+    fields: "id, name, modifiedTime",
+    supportsAllDrives: true,
+  });
 
-  try {
-    const drive = getDriveClient();
+  const driveModifiedTime = fileInfo.data.modifiedTime || "";
+  const dbMetaMap = await getProjectDocumentMetadata(folderId);
+  const dbModifiedTime = dbMetaMap[fileId];
 
-    const fileInfo = await drive.files.get({
-      fileId,
-      fields: "id, name, modifiedTime",
-      supportsAllDrives: true,
-    });
-
-    const driveModifiedTime = fileInfo.data.modifiedTime || "";
-    // Note: We use folderId as the "projectId" parameter for vector-db namespace
-    const dbMetaMap = await getProjectDocumentMetadata(folderId);
-    const dbModifiedTime = dbMetaMap[fileId];
-
-    if (dbModifiedTime && dbModifiedTime === driveModifiedTime) {
-      return {
-        success: true,
-        message: `File '${fileInfo.data.name}' is already up-to-date in project memory.`,
-      };
-    }
-
+  if (!dbModifiedTime || dbModifiedTime !== driveModifiedTime) {
     if (dbModifiedTime) {
       await deleteProjectDocument(folderId, fileId);
     }
@@ -110,7 +93,7 @@ export async function ingestDriveDocument(fileId: string) {
 
     const content = res.data;
     if (typeof content !== "string" || content.trim() === "") {
-      return { success: false, error: "Empty or invalid file content" };
+      throw new Error("Empty or invalid file content");
     }
 
     const splitter = new RecursiveCharacterTextSplitter({
@@ -127,12 +110,89 @@ export async function ingestDriveDocument(fileId: string) {
         modified_time: driveModifiedTime,
       });
     }
+    return { synced: true, content, driveModifiedTime };
+  }
+  
+  return { synced: false, driveModifiedTime };
+}
+
+export async function readDriveDocument(fileId: string) {
+  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
+  if (!folderId) {
+    return {
+      success: false,
+      error: "DOC_MCP_DRIVE_FOLDER_ID is not configured for this agent.",
+    };
+  }
+
+  try {
+    const result = await syncSingleDocument(fileId, folderId);
+    
+    // If not synced just now, we need to fetch content to return to the user
+    let content = result.content;
+    if (!content) {
+      const drive = getDriveClient();
+      const res = await drive.files.export({
+        fileId: fileId,
+        mimeType: "text/plain",
+      });
+      content = typeof res.data === "string" ? res.data : "";
+    }
+
+    let finalContent = content;
+    const MAX_CHARS = 10000;
+    if (finalContent && finalContent.length > MAX_CHARS) {
+      finalContent =
+        finalContent.substring(0, MAX_CHARS) +
+        "\n\n... [Content truncated due to length. The full document has been automatically ingested into Vector Memory. Use search_knowledge to query specific details.]";
+    }
 
     return {
       success: true,
-      message: `Successfully ingested '${fileInfo.data.name}' into project memory (${chunks.length} chunks).`,
+      content: finalContent || "Empty file",
     };
   } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function syncFolderState(folderId: string) {
+  try {
+    const drive = getDriveClient();
+    let q = "mimeType = 'application/vnd.google-apps.document'";
+    q = `'${folderId}' in parents and ${q}`;
+
+    const res = await drive.files.list({
+      q,
+      fields: "files(id, name, modifiedTime)",
+      spaces: "drive",
+      pageSize: 100,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    const driveFiles = res.data.files || [];
+    const dbMetaMap = await getProjectDocumentMetadata(folderId);
+
+    // Sync updated or new files
+    for (const file of driveFiles) {
+      if (!file.id) continue;
+      const dbModTime = dbMetaMap[file.id];
+      if (!dbModTime || dbModTime !== file.modifiedTime) {
+        await syncSingleDocument(file.id, folderId);
+      }
+    }
+
+    // Delete removed files from DB
+    for (const dbFileId of Object.keys(dbMetaMap)) {
+      if (!driveFiles.find(f => f.id === dbFileId)) {
+        await deleteProjectDocument(folderId, dbFileId);
+      }
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("Auto-sync failed:", err.message);
     return { success: false, error: err.message };
   }
 }

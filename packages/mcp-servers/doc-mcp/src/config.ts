@@ -6,6 +6,8 @@ const schema = z.object({
   DOC_MCP_GOOGLE_PRIVATE_KEY: z.string().optional(),
   
   // Vector DB / Embeddings
+  QDRANT_URL: z.string().url().describe("The URL of your Qdrant instance"),
+  QDRANT_API_KEY: z.string().optional().describe("API Key for Qdrant Cloud (optional for local)"),
   OPENROUTER_API_KEY: z.string().min(1),
   EMBEDDING_MODEL_ID: z.string().default("nvidia/llama-nemotron-embed-vl-1b-v2:free"),
   CHUNK_SIZE: z.coerce.number().int().positive().default(4000),

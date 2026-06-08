@@ -1,16 +1,46 @@
-import { connect, Connection } from '@lancedb/lancedb';
-import path from 'path';
-// We just use console.log/error or a simple logger here, since we don't want to rely on @workspace/core
+import { QdrantClient } from '@qdrant/js-client-rest';
+import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
 
-let db: Connection | null = null;
+let client: QdrantClient | null = null;
+const COLLECTION_NAME = 'project_memory';
 
 export async function initVectorDB() {
-  if (!db) {
-    // Connect to LanceDB local instance
-    const dbPath = path.resolve(process.cwd(), '.lancedb');
-    db = await connect(dbPath);
-    console.log(`Connected to LanceDB at ${dbPath}`);
+  if (!client) {
+    client = new QdrantClient({
+      url: config.QDRANT_URL,
+      apiKey: config.QDRANT_API_KEY,
+    });
+    console.error(`Connected to Qdrant at ${config.QDRANT_URL}`);
+
+    // Check if collection exists
+    const res = await client.getCollections();
+    const exists = res.collections.some(c => c.name === COLLECTION_NAME);
+    if (!exists) {
+      console.error(`Creating Qdrant collection: ${COLLECTION_NAME}`);
+      const dummyVector = await embedText("test");
+      const dimension = dummyVector.length;
+
+      await client.createCollection(COLLECTION_NAME, {
+        vectors: {
+          size: dimension,
+          distance: "Cosine",
+        },
+      });
+      await client.createPayloadIndex(COLLECTION_NAME, {
+        field_name: "projectId",
+        field_schema: "keyword",
+      });
+      await client.createPayloadIndex(COLLECTION_NAME, {
+        field_name: "file_id",
+        field_schema: "keyword",
+      });
+      await client.createPayloadIndex(COLLECTION_NAME, {
+        field_name: "source",
+        field_schema: "keyword",
+      });
+      console.error(`Collection ${COLLECTION_NAME} created with dimension ${dimension}.`);
+    }
   }
 }
 
@@ -42,103 +72,112 @@ export async function embedText(text: string): Promise<number[]> {
 
 export async function upsertProjectDocument(projectId: string, text: string, metadata: Record<string, any> = {}): Promise<void> {
   await initVectorDB();
-
-  if (!db) throw new Error("VectorDB not initialized");
+  if (!client) throw new Error("Qdrant not initialized");
 
   const vector = await embedText(text);
 
-  const data = [
-    {
-      id: `${projectId}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-      projectId,
-      text,
-      vector,
-      source: metadata.source || "user",
-      file_id: metadata.file_id || null,
-      modified_time: metadata.modified_time || null,
-      metadata: JSON.stringify(metadata),
-      createdAt: new Date().toISOString()
-    }
-  ];
+  await client.upsert(COLLECTION_NAME, {
+    wait: true,
+    points: [
+      {
+        id: uuidv4(),
+        vector: vector,
+        payload: {
+          projectId,
+          text,
+          source: metadata.source || "user",
+          file_id: metadata.file_id || null,
+          modified_time: metadata.modified_time || null,
+          metadata: JSON.stringify(metadata),
+          createdAt: new Date().toISOString()
+        }
+      }
+    ]
+  });
 
-  // Open or create the table
-  const tableNames = await db.tableNames();
-  let table;
-  if (tableNames.includes('project_memory')) {
-    table = await db.openTable('project_memory');
-    await table.add(data);
-  } else {
-    table = await db.createTable('project_memory', data);
-  }
-
-  console.log(`Upserted document for project ${projectId}`);
+  console.error(`Upserted document chunk for project ${projectId}`);
 }
 
 export async function searchProjectMemory(projectId: string, query: string, topK: number = 3): Promise<any[]> {
   await initVectorDB();
+  if (!client) throw new Error("Qdrant not initialized");
 
-  if (!db) throw new Error("VectorDB not initialized");
-
-  const tableNames = await db.tableNames();
-  if (!tableNames.includes('project_memory')) {
-    return []; // No memory yet
-  }
-
-  const table = await db.openTable('project_memory');
   const queryVector = await embedText(query);
 
-  // Search and filter by projectId
-  const results = await table
-    .search(queryVector)
-    .where(`projectId = '${projectId}'`)
-    .limit(topK)
-    .toArray();
+  const results = await client.search(COLLECTION_NAME, {
+    vector: queryVector,
+    limit: topK,
+    with_payload: true,
+    filter: {
+      must: [
+        {
+          key: "projectId",
+          match: {
+            value: projectId
+          }
+        }
+      ]
+    }
+  });
 
-  return results;
+  // Map to match LanceDB format expected by other tools
+  return results.map(r => ({
+    id: r.id,
+    vector: r.vector,
+    ...r.payload
+  }));
 }
 
 export async function deleteProjectDocument(projectId: string, fileId: string): Promise<void> {
   await initVectorDB();
-  if (!db) return;
+  if (!client) return;
 
-  const tableNames = await db.tableNames();
-  if (!tableNames.includes('project_memory')) return;
-
-  const table = await db.openTable('project_memory');
-  await table.delete(`projectId = '${projectId}' AND file_id = '${fileId}'`);
-  console.log(`Deleted old chunks from VectorDB for ${projectId} / ${fileId}`);
+  await client.delete(COLLECTION_NAME, {
+    filter: {
+      must: [
+        { key: "projectId", match: { value: projectId } },
+        { key: "file_id", match: { value: fileId } }
+      ]
+    }
+  });
+  console.error(`Deleted old chunks from Qdrant for ${projectId} / ${fileId}`);
 }
 
 export async function checkProjectDocumentExists(projectId: string, fileId: string): Promise<boolean> {
   await initVectorDB();
-  if (!db) return false;
+  if (!client) return false;
 
-  const tableNames = await db.tableNames();
-  if (!tableNames.includes('project_memory')) return false;
-
-  const table = await db.openTable('project_memory');
-  const count = await table.countRows(`projectId = '${projectId}' AND file_id = '${fileId}'`);
-  return count > 0;
+  const res = await client.count(COLLECTION_NAME, {
+    filter: {
+      must: [
+        { key: "projectId", match: { value: projectId } },
+        { key: "file_id", match: { value: fileId } }
+      ]
+    }
+  });
+  return res.count > 0;
 }
 
 export async function getProjectDocumentMetadata(projectId: string): Promise<Record<string, string>> {
   await initVectorDB();
-  if (!db) return {};
+  if (!client) return {};
 
-  const tableNames = await db.tableNames();
-  if (!tableNames.includes('project_memory')) return {};
-
-  const table = await db.openTable('project_memory');
-  
-  const records = await table.query()
-    .where(`projectId = '${projectId}' AND source = 'google_drive'`)
-    .select(['file_id', 'modified_time'])
-    .toArray();
+  const res = await client.scroll(COLLECTION_NAME, {
+    filter: {
+      must: [
+        { key: "projectId", match: { value: projectId } },
+        { key: "source", match: { value: "google_drive" } }
+      ]
+    },
+    limit: 10000,
+    with_payload: ["file_id", "modified_time"],
+    with_vector: false
+  });
 
   const fileMap: Record<string, string> = {};
-  for (const r of records) {
-    if (r.file_id && r.modified_time) {
-      fileMap[r.file_id as string] = r.modified_time as string;
+  for (const r of res.points) {
+    if (r.payload && r.payload.file_id && r.payload.modified_time) {
+      fileMap[r.payload.file_id as string] = r.payload.modified_time as string;
     }
   }
 

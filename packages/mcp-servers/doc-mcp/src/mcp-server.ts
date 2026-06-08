@@ -3,10 +3,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
-  searchDriveDocuments,
-  ingestDriveDocument,
+  listDriveFiles,
+  readDriveDocument,
 } from "./tools/driveTools.js";
-import { storeKnowledge, searchKnowledge } from "./tools/knowledgeTools.js";
+import { saveAgentNote, searchKnowledge } from "./tools/knowledgeTools.js";
 import { config } from "./config.js";
 
 const DRIVE_FOLDER_ID = config.DOC_MCP_DRIVE_FOLDER_ID;
@@ -25,9 +25,9 @@ const server = new McpServer({
 
 // Register tools
 server.registerTool(
-  "search_drive_documents",
+  "list_drive_files",
   {
-    description: "Search for Google Drive documents in the configured folder.",
+    description: "List and search for Google Drive documents in the configured folder.",
     inputSchema: {
       keyword: z
         .string()
@@ -36,7 +36,7 @@ server.registerTool(
     },
   },
   async ({ keyword }) => {
-    const res = await searchDriveDocuments(keyword);
+    const res = await listDriveFiles(keyword);
     if (!res.success) {
       return {
         content: [{ type: "text", text: `Error: ${res.error}` }],
@@ -50,16 +50,16 @@ server.registerTool(
 );
 
 server.registerTool(
-  "ingest_drive_document",
+  "read_drive_document",
   {
     description:
-      "Ingest a specific Google Drive document into vector memory for semantic search.",
+      "Read the content of a specific Google Drive document. The document will also be automatically ingested into vector memory for future semantic search.",
     inputSchema: {
-      fileId: z.string().describe("The Google Drive file ID to ingest"),
+      fileId: z.string().describe("The Google Drive file ID to read"),
     },
   },
   async ({ fileId }) => {
-    const res = await ingestDriveDocument(fileId);
+    const res = await readDriveDocument(fileId);
     if (!res.success) {
       return {
         content: [{ type: "text", text: `Error: ${res.error}` }],
@@ -67,21 +67,21 @@ server.registerTool(
       };
     }
     return {
-      content: [{ type: "text", text: res.message || "Ingested successfully" }],
+      content: [{ type: "text", text: res.content || "No content found." }],
     };
   },
 );
 
 server.registerTool(
-  "store_knowledge",
+  "save_agent_note",
   {
-    description: "Store information or notes into the folder's vector memory.",
+    description: "Save an agent note, thought, or summary directly into the vector memory.",
     inputSchema: {
-      content: z.string().describe("The knowledge content to store"),
+      content: z.string().describe("The note or knowledge content to store"),
     },
   },
   async ({ content }) => {
-    const res = await storeKnowledge(content);
+    const res = await saveAgentNote(content);
     if (!res.success) {
       return {
         content: [{ type: "text", text: `Error: ${res.error}` }],
@@ -89,7 +89,7 @@ server.registerTool(
       };
     }
     return {
-      content: [{ type: "text", text: res.message || "Stored successfully" }],
+      content: [{ type: "text", text: res.message || "Saved successfully" }],
     };
   },
 );
