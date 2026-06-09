@@ -32,7 +32,7 @@ function getDriveClient() {
 }
 
 export async function listDriveFiles(keyword?: string) {
-  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
+  const folderId = config.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
     return {
       success: false,
@@ -112,12 +112,12 @@ export async function syncSingleDocument(fileId: string, folderId: string) {
     }
     return { synced: true, content, driveModifiedTime };
   }
-  
+
   return { synced: false, driveModifiedTime };
 }
 
 export async function readDriveDocument(fileId: string) {
-  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
+  const folderId = config.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
     return {
       success: false,
@@ -127,7 +127,7 @@ export async function readDriveDocument(fileId: string) {
 
   try {
     const result = await syncSingleDocument(fileId, folderId);
-    
+
     // If not synced just now, we need to fetch content to return to the user
     let content = result.content;
     if (!content) {
@@ -185,7 +185,7 @@ export async function syncFolderState(folderId: string) {
 
     // Delete removed files from DB
     for (const dbFileId of Object.keys(dbMetaMap)) {
-      if (!driveFiles.find(f => f.id === dbFileId)) {
+      if (!driveFiles.find((f) => f.id === dbFileId)) {
         await deleteProjectDocument(folderId, dbFileId);
       }
     }

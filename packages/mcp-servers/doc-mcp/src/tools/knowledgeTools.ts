@@ -1,10 +1,14 @@
+import { config } from "../config.js";
 import { upsertProjectDocument, searchProjectMemory } from "../db/vector.js";
 import { syncFolderState } from "./driveTools.js";
 
 export async function saveAgentNote(content: string) {
-  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
+  const folderId = config.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
-    return { success: false, error: "DOC_MCP_DRIVE_FOLDER_ID is not configured." };
+    return {
+      success: false,
+      error: "DOC_MCP_DRIVE_FOLDER_ID is not configured.",
+    };
   }
 
   try {
@@ -12,16 +16,22 @@ export async function saveAgentNote(content: string) {
     await upsertProjectDocument(folderId, content, {
       source: "agent",
     });
-    return { success: true, message: "Successfully stored note in vector memory." };
+    return {
+      success: true,
+      message: "Successfully stored note in vector memory.",
+    };
   } catch (err: any) {
     return { success: false, error: `Failed to store note: ${err.message}` };
   }
 }
 
 export async function searchKnowledge(query: string, topK: number = 3) {
-  const folderId = process.env.DOC_MCP_DRIVE_FOLDER_ID;
+  const folderId = config.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
-    return { success: false, error: "DOC_MCP_DRIVE_FOLDER_ID is not configured." };
+    return {
+      success: false,
+      error: "DOC_MCP_DRIVE_FOLDER_ID is not configured.",
+    };
   }
 
   try {
