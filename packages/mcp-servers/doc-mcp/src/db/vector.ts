@@ -70,7 +70,7 @@ export async function embedText(text: string): Promise<number[]> {
   return json.data[0].embedding;
 }
 
-export async function upsertProjectDocument(projectId: string, text: string, metadata: Record<string, any> = {}): Promise<void> {
+export async function upsertProjectDocument(folderId: string, text: string, metadata: Record<string, any> = {}): Promise<void> {
   await initVectorDB();
   if (!client) throw new Error("Qdrant not initialized");
 
@@ -83,7 +83,7 @@ export async function upsertProjectDocument(projectId: string, text: string, met
         id: uuidv4(),
         vector: vector,
         payload: {
-          projectId,
+          folderId,
           text,
           source: metadata.source || "user",
           file_id: metadata.file_id || null,
@@ -95,10 +95,10 @@ export async function upsertProjectDocument(projectId: string, text: string, met
     ]
   });
 
-  console.error(`Upserted document chunk for project ${projectId}`);
+  console.error(`Upserted document chunk for folder ${folderId}`);
 }
 
-export async function searchProjectMemory(projectId: string, query: string, topK: number = 3): Promise<any[]> {
+export async function searchProjectMemory(folderId: string, query: string, topK: number = 3): Promise<any[]> {
   await initVectorDB();
   if (!client) throw new Error("Qdrant not initialized");
 
@@ -111,9 +111,9 @@ export async function searchProjectMemory(projectId: string, query: string, topK
     filter: {
       must: [
         {
-          key: "projectId",
+          key: "folderId",
           match: {
-            value: projectId
+            value: folderId
           }
         }
       ]
@@ -128,29 +128,29 @@ export async function searchProjectMemory(projectId: string, query: string, topK
   }));
 }
 
-export async function deleteProjectDocument(projectId: string, fileId: string): Promise<void> {
+export async function deleteProjectDocument(folderId: string, fileId: string): Promise<void> {
   await initVectorDB();
   if (!client) return;
 
   await client.delete(COLLECTION_NAME, {
     filter: {
       must: [
-        { key: "projectId", match: { value: projectId } },
+        { key: "folderId", match: { value: folderId } },
         { key: "file_id", match: { value: fileId } }
       ]
     }
   });
-  console.error(`Deleted old chunks from Qdrant for ${projectId} / ${fileId}`);
+  console.error(`Deleted old chunks from Qdrant for ${folderId} / ${fileId}`);
 }
 
-export async function checkProjectDocumentExists(projectId: string, fileId: string): Promise<boolean> {
+export async function checkProjectDocumentExists(folderId: string, fileId: string): Promise<boolean> {
   await initVectorDB();
   if (!client) return false;
 
   const res = await client.count(COLLECTION_NAME, {
     filter: {
       must: [
-        { key: "projectId", match: { value: projectId } },
+        { key: "folderId", match: { value: folderId } },
         { key: "file_id", match: { value: fileId } }
       ]
     }
@@ -158,14 +158,14 @@ export async function checkProjectDocumentExists(projectId: string, fileId: stri
   return res.count > 0;
 }
 
-export async function getProjectDocumentMetadata(projectId: string): Promise<Record<string, string>> {
+export async function getProjectDocumentMetadata(folderId: string): Promise<Record<string, string>> {
   await initVectorDB();
   if (!client) return {};
 
   const res = await client.scroll(COLLECTION_NAME, {
     filter: {
       must: [
-        { key: "projectId", match: { value: projectId } },
+        { key: "folderId", match: { value: folderId } },
         { key: "source", match: { value: "google_drive" } }
       ]
     },

@@ -31,8 +31,8 @@ function getDriveClient() {
   return google.drive({ version: "v3", auth });
 }
 
-export async function listDriveFiles(keyword?: string) {
-  const folderId = config.DOC_MCP_DRIVE_FOLDER_ID;
+export async function listDriveFiles(keyword?: string, targetFolderId?: string) {
+  const folderId = targetFolderId || config.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
     return {
       success: false,
@@ -42,7 +42,7 @@ export async function listDriveFiles(keyword?: string) {
 
   try {
     const drive = getDriveClient();
-    let q = "mimeType = 'application/vnd.google-apps.document'";
+    let q = "(mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/vnd.google-apps.folder') and trashed = false";
     q = `'${folderId}' in parents and ${q}`;
 
     if (keyword) {
@@ -51,7 +51,7 @@ export async function listDriveFiles(keyword?: string) {
 
     const res = await drive.files.list({
       q,
-      fields: "files(id, name, description)",
+      fields: "files(id, name, description, mimeType)",
       spaces: "drive",
       pageSize: 50,
       supportsAllDrives: true,
@@ -159,19 +159,33 @@ export async function readDriveDocument(fileId: string) {
 export async function syncFolderState(folderId: string) {
   try {
     const drive = getDriveClient();
-    let q = "mimeType = 'application/vnd.google-apps.document'";
-    q = `'${folderId}' in parents and ${q}`;
 
-    const res = await drive.files.list({
-      q,
-      fields: "files(id, name, modifiedTime)",
-      spaces: "drive",
-      pageSize: 100,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
+    async function getAllDocumentsFlat(): Promise<any[]> {
+      let allDocs: any[] = [];
+      let pageToken: string | undefined = undefined;
 
-    const driveFiles = res.data.files || [];
+      do {
+        const docsRes: any = await drive.files.list({
+          // Chú ý: Đéo check parentId nữa, gom sạch sành sanh mọi file .doc mà Service Account nhìn thấy
+          q: `mimeType = 'application/vnd.google-apps.document' and trashed = false`,
+          fields: "nextPageToken, files(id, name, modifiedTime)",
+          spaces: "drive",
+          pageSize: 100, // Google API limit mỗi page, tự động nhảy trang nếu nhiều hơn
+          pageToken,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        });
+        
+        if (docsRes.data.files) {
+          allDocs = allDocs.concat(docsRes.data.files);
+        }
+        pageToken = docsRes.data.nextPageToken || undefined;
+      } while (pageToken);
+
+      return allDocs;
+    }
+
+    const driveFiles = await getAllDocumentsFlat();
     const dbMetaMap = await getProjectDocumentMetadata(folderId);
 
     // Sync updated or new files

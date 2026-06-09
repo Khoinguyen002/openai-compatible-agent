@@ -27,16 +27,20 @@ const server = new McpServer({
 server.registerTool(
   "list_drive_files",
   {
-    description: "List and search for Google Drive documents in the configured folder.",
+    description: "List and search for Google Drive documents and subfolders in a specific folder.",
     inputSchema: {
       keyword: z
         .string()
         .optional()
         .describe("Optional keyword to search for in document titles"),
+      targetFolderId: z
+        .string()
+        .optional()
+        .describe("Optional Google Drive folder ID to list contents from. Defaults to the root knowledge folder."),
     },
   },
-  async ({ keyword }) => {
-    const res = await listDriveFiles(keyword);
+  async ({ keyword, targetFolderId }) => {
+    const res = await listDriveFiles(keyword, targetFolderId);
     if (!res.success) {
       return {
         content: [{ type: "text", text: `Error: ${res.error}` }],
