@@ -44,16 +44,18 @@ export async function searchKnowledge(query: string, topK: number = 3) {
 
     return {
       success: true,
-      results: results.map((r: any) => {
-        let title = "Unknown Source";
-        if (r.metadata) {
-          try {
-            const metaObj = JSON.parse(r.metadata);
-            if (metaObj.title) title = metaObj.title;
-          } catch (e) {}
-        }
-        return `[File: ${title} | File ID: ${r.file_id || 'N/A'}]\n${r.text}`;
-      }).join("\n\n---\n\n"),
+      results: results
+        .map((r: any) => {
+          let title = "Unknown Source";
+          if (r.metadata) {
+            try {
+              const metaObj = JSON.parse(r.metadata);
+              if (metaObj.title) title = metaObj.title;
+            } catch (e) {}
+          }
+          return `[File: ${title} | File ID: ${r.file_id || "N/A"}]\n${r.text}`;
+        })
+        .join("\n\n---\n\n"),
     };
   } catch (err: any) {
     return { success: false, error: `Failed to search: ${err.message}` };

@@ -28,7 +28,7 @@ export async function initVectorDB() {
         },
       });
       await client.createPayloadIndex(COLLECTION_NAME, {
-        field_name: "projectId",
+        field_name: "folderId",
         field_schema: "keyword",
       });
       await client.createPayloadIndex(COLLECTION_NAME, {
@@ -102,30 +102,35 @@ export async function searchProjectMemory(folderId: string, query: string, topK:
   await initVectorDB();
   if (!client) throw new Error("Qdrant not initialized");
 
-  const queryVector = await embedText(query);
+  try {
+    const queryVector = await embedText(query);
 
-  const results = await client.search(COLLECTION_NAME, {
-    vector: queryVector,
-    limit: topK,
-    with_payload: true,
-    filter: {
-      must: [
-        {
-          key: "folderId",
-          match: {
-            value: folderId
+    const results = await client.search(COLLECTION_NAME, {
+      vector: queryVector,
+      limit: topK,
+      with_payload: true,
+      filter: {
+        must: [
+          {
+            key: "folderId",
+            match: {
+              value: folderId
+            }
           }
-        }
-      ]
-    }
-  });
+        ]
+      }
+    });
 
-  // Map to match LanceDB format expected by other tools
-  return results.map(r => ({
-    id: r.id,
-    vector: r.vector,
-    ...r.payload
-  }));
+    // Map to match LanceDB format expected by other tools
+    return results.map(r => ({
+      id: r.id,
+      vector: r.vector,
+      ...r.payload
+    }));
+  } catch (err: any) {
+    console.error("Qdrant search error:", err.message);
+    return [];
+  }
 }
 
 export async function deleteProjectDocument(folderId: string, fileId: string): Promise<void> {
