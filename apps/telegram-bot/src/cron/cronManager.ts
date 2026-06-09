@@ -35,8 +35,14 @@ export async function syncCronScheduler(): Promise<void> {
     );
 
     for (const job of cronList) {
-      const { name, expression, developerPrompt, systemPrompt, prompt, active = true } = job;
-      const actualPrompt = developerPrompt || systemPrompt || prompt;
+      const {
+        name,
+        expression,
+        systemPrompt,
+        prompt,
+        active = true,
+      } = job;
+      const actualPrompt = systemPrompt || prompt;
 
       if (active === false) {
         log.debug({ name }, "[cron] skipping disabled job");
@@ -44,7 +50,10 @@ export async function syncCronScheduler(): Promise<void> {
       }
 
       if (!cron.validate(expression)) {
-        log.error({ name, expression }, "[cron] invalid cron expression — skipping");
+        log.error(
+          { name, expression },
+          "[cron] invalid cron expression — skipping",
+        );
         continue;
       }
 

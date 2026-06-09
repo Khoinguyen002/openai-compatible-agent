@@ -66,10 +66,10 @@ export const telegramBotToolDeclarations = [
           description: z
             .string()
             .describe("Description of what this automated prompt achieves."),
-          developerPrompt: z
+          prompt: z
             .string()
             .describe(
-              "The specific developer prompt instruction that the LLM will execute when this cron triggers. This acts as the direct developer command to perform the scheduled task.",
+              "The natural language instruction that the LLM will execute when this cron triggers. Example: 'Generate a creative water reminder and call send_telegram_message to send it to the user.'",
             ),
           active: z
             .boolean()
