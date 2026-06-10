@@ -60,10 +60,12 @@ server.registerTool(
       "Read the content of a specific Google Drive document. The document will also be automatically ingested into vector memory for future semantic search.",
     inputSchema: {
       fileId: z.string().describe("The Google Drive file ID to read"),
+      offset: z.number().optional().describe("Starting character index (default: 0)"),
+      limit: z.number().optional().describe("Maximum number of characters to return (default: 10000)"),
     },
   },
-  async ({ fileId }) => {
-    const res = await readDriveDocument(fileId);
+  async ({ fileId, offset, limit }) => {
+    const res = await readDriveDocument(fileId, offset, limit);
     if (!res.success) {
       return {
         content: [{ type: "text", text: `Error: ${res.error}` }],
@@ -71,7 +73,7 @@ server.registerTool(
       };
     }
     return {
-      content: [{ type: "text", text: res.content || "No content found." }],
+      content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
     };
   },
 );

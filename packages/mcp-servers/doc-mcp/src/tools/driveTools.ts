@@ -116,7 +116,7 @@ export async function syncSingleDocument(fileId: string, folderId: string) {
   return { synced: false, driveModifiedTime };
 }
 
-export async function readDriveDocument(fileId: string) {
+export async function readDriveDocument(fileId: string, offset: number = 0, limit: number = 10000) {
   const folderId = config.DOC_MCP_DRIVE_FOLDER_ID;
   if (!folderId) {
     return {
@@ -140,16 +140,32 @@ export async function readDriveDocument(fileId: string) {
     }
 
     let finalContent = content;
-    const MAX_CHARS = 10000;
-    if (finalContent && finalContent.length > MAX_CHARS) {
-      finalContent =
-        finalContent.substring(0, MAX_CHARS) +
-        "\n\n... [Content truncated due to length. The full document has been automatically ingested into Vector Memory. Use search_knowledge to query specific details.]";
+    const totalSize = finalContent ? finalContent.length : 0;
+
+    if (finalContent) {
+      finalContent = finalContent.substring(offset, offset + limit);
+    }
+
+    const isTruncated = offset + (finalContent?.length || 0) < totalSize;
+    let warning = undefined;
+
+    if (isTruncated) {
+      warning = `[WARNING]: This is not the entire document. Content has been truncated from character ${offset} to ${offset + finalContent!.length} out of ${totalSize} total characters. Please use 'offset' and 'limit' parameters to read the rest of the document, or use search_knowledge to query specific details.`;
+      finalContent += `\n\n${warning}`;
     }
 
     return {
       success: true,
-      content: finalContent || "Empty file",
+      data: {
+        content: finalContent || "Empty file",
+        metadata: {
+          totalSize,
+          offset,
+          limit,
+          isTruncated,
+          warning,
+        },
+      },
     };
   } catch (err: any) {
     return { success: false, error: err.message };
