@@ -102,12 +102,19 @@ export async function syncSingleDocument(fileId: string, folderId: string) {
     });
     const chunks = await splitter.splitText(content);
 
+    let currentOffset = 0;
     for (const chunk of chunks) {
+      const offset = content.indexOf(chunk, currentOffset);
+      if (offset !== -1) {
+        currentOffset = offset;
+      }
+
       await upsertProjectDocument(folderId, chunk, {
         title: fileInfo.data.name || "Untitled Google Doc",
         source: "google_drive",
         file_id: fileId,
         modified_time: driveModifiedTime,
+        offset: offset !== -1 ? offset : 0,
       });
     }
     return { synced: true, content, driveModifiedTime };

@@ -2,10 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import {
-  listDriveFiles,
-  readDriveDocument,
-} from "./tools/driveTools.js";
+import { listDriveFiles, readDriveDocument } from "./tools/driveTools.js";
 import { saveAgentNote, searchKnowledge } from "./tools/knowledgeTools.js";
 import { config } from "./config.js";
 
@@ -20,14 +17,15 @@ if (!DRIVE_FOLDER_ID) {
 
 const server = new McpServer({
   name: "doc-agent",
-  version: "1.0.0",
+  version: "1.0.4",
 });
 
 // Register tools
 server.registerTool(
   "list_drive_files",
   {
-    description: "List and search for Google Drive documents and subfolders in a specific folder.",
+    description:
+      "List and search for Google Drive documents and subfolders in a specific folder.",
     inputSchema: {
       keyword: z
         .string()
@@ -36,7 +34,9 @@ server.registerTool(
       targetFolderId: z
         .string()
         .optional()
-        .describe("Optional Google Drive folder ID to list contents from. Defaults to the root knowledge folder."),
+        .describe(
+          "Optional Google Drive folder ID to list contents from. Defaults to the root knowledge folder.",
+        ),
     },
   },
   async ({ keyword, targetFolderId }) => {
@@ -57,11 +57,17 @@ server.registerTool(
   "read_drive_document",
   {
     description:
-      "Read the content of a specific Google Drive document. The document will also be automatically ingested into vector memory for future semantic search.",
+      "Read the content of a specific Google Drive document. You can use the 'offset' parameter (obtained from search_knowledge) to read a specific chunk of text.",
     inputSchema: {
       fileId: z.string().describe("The Google Drive file ID to read"),
-      offset: z.number().optional().describe("Starting character index (default: 0)"),
-      limit: z.number().optional().describe("Maximum number of characters to return (default: 10000)"),
+      offset: z
+        .number()
+        .optional()
+        .describe("Starting character index (default: 0)"),
+      limit: z
+        .number()
+        .optional()
+        .describe("Maximum number of characters to return (default: 10000)"),
     },
   },
   async ({ fileId, offset, limit }) => {
@@ -78,33 +84,13 @@ server.registerTool(
   },
 );
 
-server.registerTool(
-  "save_agent_note",
-  {
-    description: "Save an agent note, thought, or summary directly into the vector memory.",
-    inputSchema: {
-      content: z.string().describe("The note or knowledge content to store"),
-    },
-  },
-  async ({ content }) => {
-    const res = await saveAgentNote(content);
-    if (!res.success) {
-      return {
-        content: [{ type: "text", text: `Error: ${res.error}` }],
-        isError: true,
-      };
-    }
-    return {
-      content: [{ type: "text", text: res.message || "Saved successfully" }],
-    };
-  },
-);
+
 
 server.registerTool(
   "search_knowledge",
   {
     description:
-      "Search the folder's vector memory for relevant context or knowledge.",
+      "Search the folder's vector memory for relevant context or knowledge. Returns structured JSON array of matching chunks.",
     inputSchema: {
       query: z.string().describe("The search query"),
       topK: z
