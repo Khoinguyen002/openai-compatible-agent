@@ -55,6 +55,7 @@ const schema = z.object({
 
   // MCP server keys (optional — only required when the corresponding MCP server is enabled)
   TAVILY_API_KEY: z.string().optional(),
+  FIRECRAWL_API_KEY: z.string().optional(),
 
   // Google Drive JIT Integration (doc-mcp)
   DOC_MCP_DRIVE_FOLDER_ID: z.string().optional(),
