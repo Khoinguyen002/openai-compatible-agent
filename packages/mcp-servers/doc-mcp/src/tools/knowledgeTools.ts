@@ -28,6 +28,7 @@ export async function searchKnowledge(query: string, topK: number = 3) {
       success: true,
       results: results.map((r: any) => ({
         title: r.title || "Unknown",
+        fileId: r.file_id || null,
         offset: r.offset ?? 0,
         text: r.text,
       })),
@@ -54,6 +55,7 @@ export async function searchExact(
       totalFound: results.length,
       results: results.map((r: any) => ({
         title: r.title || "Unknown",
+        fileId: r.file_id || null,
         offset: r.offset ?? 0,
         text: r.text,
       })),

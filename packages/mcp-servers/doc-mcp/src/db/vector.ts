@@ -39,6 +39,10 @@ export async function initVectorDB() {
         field_schema: "keyword",
       });
       await client.createPayloadIndex(COLLECTION_NAME, {
+        field_name: "file_id",
+        field_schema: "keyword",
+      });
+      await client.createPayloadIndex(COLLECTION_NAME, {
         field_name: "block_index",
         field_schema: "integer",
       });
@@ -181,6 +185,7 @@ export interface ChunkUpsert {
   vector: number[];
   text: string;
   title: string;
+  fileId: string;
   blockIndex: number;
   blockHash: string;
   source: string;
@@ -203,6 +208,7 @@ export async function upsertChunkBatch(chunks: ChunkUpsert[]): Promise<void> {
       payload: {
         text: c.text,
         title: c.title,
+        file_id: c.fileId,
         block_index: c.blockIndex,
         block_hash: c.blockHash,
         source: c.source,
@@ -308,9 +314,11 @@ export async function searchProjectMemory(
 }
 
 /**
- * Exhaustive full-text search using Qdrant's inverted index on the `text` field.
- * Uses whitespace tokenizer → API paths like /v1/foo/bar match as single tokens.
- * Paginates through all results server-side (no full collection scan in JS).
+ * Exhaustive substring search: scrolls ALL points and filters client-side.
+ * More reliable than Qdrant full-text filter (whitespace tokenizer doesn't
+ * strip surrounding punctuation, causing false negatives for terms like
+ * "ServiceCode.mkp" appearing as "ServiceCode.mkp)" in headings).
+ * For typical collection sizes (~few hundred chunks) the O(N) cost is negligible.
  */
 export async function exactSearchChunks(
   term: string,
@@ -319,31 +327,25 @@ export async function exactSearchChunks(
   await initVectorDB();
   if (!client) throw new Error("Qdrant not initialized");
 
-  const filter = {
-    must: [
-      {
-        key: "text",
-        match: { text: term.toLowerCase() },
-      },
-    ],
-  };
-
+  const lowerTerm = term.toLowerCase();
   const results: any[] = [];
   let offset: string | number | null | undefined = undefined;
 
-  // Paginate until all matching points are collected or limit is reached
   do {
     const page: { points: any[]; next_page_offset?: string | number | null } =
       await (client as any).scroll(COLLECTION_NAME, {
-      filter,
-      with_payload: true,
-      with_vector: false,
-      limit: Math.min(100, limit - results.length),
-      ...(offset !== undefined ? { offset } : {}),
-    });
+        with_payload: true,
+        with_vector: false,
+        limit: 100,
+        ...(offset !== undefined ? { offset } : {}),
+      });
 
     for (const point of page.points) {
-      results.push({ id: point.id, ...point.payload });
+      const text = ((point.payload?.text as string) ?? "").toLowerCase();
+      if (text.includes(lowerTerm)) {
+        results.push({ id: point.id, ...point.payload });
+        if (results.length >= limit) break;
+      }
     }
     offset = page.next_page_offset;
   } while (offset != null && results.length < limit);

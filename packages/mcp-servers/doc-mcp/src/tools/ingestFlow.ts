@@ -483,6 +483,7 @@ export async function syncSingleDocument(
       vector: vectors[vi],
       text: bl.text,
       title,
+      fileId,
       blockIndex: bl.index,
       blockHash: bl.hash,
       source: "google_drive",
