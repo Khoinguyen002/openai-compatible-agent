@@ -20,7 +20,7 @@
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "better-sqlite3": "^12.10.0",
     "@workspace/llm-engine": "workspace:*",
-    "@workspace/doc-mcp": "workspace:*"
+    "@khoinguyen2002/doc-mcp": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^7.8.0"

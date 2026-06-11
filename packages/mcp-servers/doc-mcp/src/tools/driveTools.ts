@@ -1,20 +1,15 @@
 import { google } from "googleapis";
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { config } from "../config.js";
-import {
-  upsertProjectDocument,
-  getProjectDocumentMetadata,
-  deleteProjectDocument,
-} from "../db/vector.js";
+import { deletePointsByIds, getBlockPointId } from "../db/vector.js";
+import { getAllSyncEntries, deleteSyncEntry } from "../db/syncState.js";
+import { syncSingleDocument } from "./ingestFlow.js";
 
 function getDriveClient() {
   const clientEmail = config.DOC_MCP_GOOGLE_CLIENT_EMAIL;
   let privateKey = config.DOC_MCP_GOOGLE_PRIVATE_KEY;
 
   if (!clientEmail || !privateKey) {
-    throw new Error(
-      "Google Drive credentials not configured. Please set DOC_MCP_GOOGLE_CLIENT_EMAIL and DOC_MCP_GOOGLE_PRIVATE_KEY in .env",
-    );
+    throw new Error("Google Drive credentials not configured.");
   }
 
   if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
@@ -31,205 +26,146 @@ function getDriveClient() {
   return google.drive({ version: "v3", auth });
 }
 
-export async function listDriveFiles(keyword?: string, targetFolderId?: string) {
-  const folderId = targetFolderId || config.DOC_MCP_DRIVE_FOLDER_ID;
-  if (!folderId) {
-    return {
-      success: false,
-      error: "DOC_MCP_DRIVE_FOLDER_ID is not configured for this agent.",
-    };
-  }
-
+/**
+ * List all Google Docs the Service Account can read.
+ * Optional keyword filter on document title.
+ */
+export async function listDriveFiles(keyword?: string) {
   try {
     const drive = getDriveClient();
-    let q = "(mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/vnd.google-apps.folder') and trashed = false";
-    q = `'${folderId}' in parents and ${q}`;
-
+    let q =
+      "mimeType = 'application/vnd.google-apps.document' and trashed = false";
     if (keyword) {
-      q = `name contains '${keyword}' and ${q}`;
+      const safe = keyword.replace(/'/g, "\\'");
+      q = `name contains '${safe}' and ${q}`;
     }
 
-    const res = await drive.files.list({
-      q,
-      fields: "files(id, name, description, mimeType)",
-      spaces: "drive",
-      pageSize: 50,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
+    const allFiles: any[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res: any = await drive.files.list({
+        q,
+        fields: "nextPageToken, files(id, name, mimeType, modifiedTime)",
+        spaces: "drive",
+        pageSize: 100,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      if (res.data.files) allFiles.push(...res.data.files);
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
 
-    const files = res.data.files;
-    if (!files || files.length === 0) {
-      return { success: true, results: [] };
-    }
-
-    return { success: true, results: files };
+    return { success: true, results: allFiles };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
 
-export async function syncSingleDocument(fileId: string, folderId: string) {
-  const drive = getDriveClient();
-  const fileInfo = await drive.files.get({
-    fileId,
-    fields: "id, name, modifiedTime",
-    supportsAllDrives: true,
-  });
+/**
+ * Sync all documents the SA can see:
+ * - New/changed files → syncSingleDocument()
+ * - Files removed from Drive → delete from Qdrant + Redis
+ */
+export async function syncAllDocuments() {
+  try {
+    const drive = getDriveClient();
 
-  const driveModifiedTime = fileInfo.data.modifiedTime || "";
-  const dbMetaMap = await getProjectDocumentMetadata(folderId);
-  const dbModifiedTime = dbMetaMap[fileId];
-
-  if (!dbModifiedTime || dbModifiedTime !== driveModifiedTime) {
-    if (dbModifiedTime) {
-      await deleteProjectDocument(folderId, fileId);
-    }
-
-    const res = await drive.files.export({
-      fileId: fileId,
-      mimeType: "text/plain",
-    });
-
-    const content = res.data;
-    if (typeof content !== "string" || content.trim() === "") {
-      throw new Error("Empty or invalid file content");
-    }
-
-    const splitter = new RecursiveCharacterTextSplitter({
-      chunkSize: config.CHUNK_SIZE,
-      chunkOverlap: config.CHUNK_OVERLAP,
-    });
-    const chunks = await splitter.splitText(content);
-
-    let currentOffset = 0;
-    for (const chunk of chunks) {
-      const offset = content.indexOf(chunk, currentOffset);
-      if (offset !== -1) {
-        currentOffset = offset;
-      }
-
-      await upsertProjectDocument(folderId, chunk, {
-        title: fileInfo.data.name || "Untitled Google Doc",
-        source: "google_drive",
-        file_id: fileId,
-        modified_time: driveModifiedTime,
-        offset: offset !== -1 ? offset : 0,
+    // List all docs (paginated)
+    const allDocs: any[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res: any = await drive.files.list({
+        q: "mimeType = 'application/vnd.google-apps.document' and trashed = false",
+        fields: "nextPageToken, files(id, name, modifiedTime)",
+        spaces: "drive",
+        pageSize: 100,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
       });
-    }
-    return { synced: true, content, driveModifiedTime };
-  }
+      if (res.data.files) allDocs.push(...res.data.files);
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
 
-  return { synced: false, driveModifiedTime };
+    // Get all Redis sync entries
+    const syncEntries = await getAllSyncEntries();
+
+    // Sync new or changed files
+    for (const file of allDocs) {
+      if (!file.id || !file.modifiedTime) continue;
+      const existing = syncEntries[file.id];
+      if (!existing || existing.modifiedTime !== file.modifiedTime) {
+        console.error(`[Sync] Detected change: "${file.name}"`);
+        await syncSingleDocument(
+          file.id,
+          file.modifiedTime,
+          file.name || "Untitled"
+        );
+      }
+    }
+
+    // Clean up files removed from Drive
+    const driveFileIds = new Set(allDocs.map((f) => f.id).filter(Boolean));
+    for (const [fileId, entry] of Object.entries(syncEntries)) {
+      if (!driveFileIds.has(fileId)) {
+        console.error(`[Sync] Removing deleted doc: "${entry.title}"`);
+        const pointIds = Array.from({ length: entry.blockCount }, (_, i) =>
+          getBlockPointId(fileId, i)
+        );
+        await deletePointsByIds(pointIds);
+        await deleteSyncEntry(fileId);
+      }
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("syncAllDocuments failed:", err.message);
+    return { success: false, error: err.message };
+  }
 }
 
-export async function readDriveDocument(fileId: string, offset: number = 0, limit: number = 10000) {
-  const folderId = config.DOC_MCP_DRIVE_FOLDER_ID;
-  if (!folderId) {
-    return {
-      success: false,
-      error: "DOC_MCP_DRIVE_FOLDER_ID is not configured for this agent.",
-    };
-  }
-
+/**
+ * Read a specific Google Drive document, triggering incremental sync first.
+ * Returns paginated Markdown content.
+ */
+export async function readDriveDocument(
+  fileId: string,
+  offset: number = 0,
+  limit: number = 10000
+) {
   try {
-    const result = await syncSingleDocument(fileId, folderId);
+    const drive = getDriveClient();
+    const fileInfo = await drive.files.get({
+      fileId,
+      fields: "id, name, modifiedTime",
+      supportsAllDrives: true,
+    });
 
-    // If not synced just now, we need to fetch content to return to the user
-    let content = result.content;
-    if (!content) {
-      const drive = getDriveClient();
-      const res = await drive.files.export({
-        fileId: fileId,
-        mimeType: "text/plain",
-      });
-      content = typeof res.data === "string" ? res.data : "";
-    }
+    const modifiedTime = fileInfo.data.modifiedTime || "";
+    const title = fileInfo.data.name || "Untitled";
 
-    let finalContent = content;
-    const totalSize = finalContent ? finalContent.length : 0;
+    const result = await syncSingleDocument(fileId, modifiedTime, title);
+    const content = result.content;
+    const totalSize = content.length;
+    const sliced = content.substring(offset, offset + limit);
+    const isTruncated = offset + sliced.length < totalSize;
 
-    if (finalContent) {
-      finalContent = finalContent.substring(offset, offset + limit);
-    }
-
-    const isTruncated = offset + (finalContent?.length || 0) < totalSize;
-    let warning = undefined;
-
+    let finalContent = sliced;
+    let warning: string | undefined;
     if (isTruncated) {
-      warning = `[WARNING]: This is not the entire document. Content has been truncated from character ${offset} to ${offset + finalContent!.length} out of ${totalSize} total characters. Please use 'offset' and 'limit' parameters to read the rest of the document, or use search_knowledge to query specific details.`;
+      warning = `[WARNING]: This is not the entire document. Content has been truncated from character ${offset} to ${offset + sliced.length} out of ${totalSize} total characters. Please use 'offset' and 'limit' parameters to read the rest of the document, or use search_knowledge to query specific details.`;
       finalContent += `\n\n${warning}`;
     }
 
     return {
       success: true,
       data: {
-        content: finalContent || "Empty file",
-        metadata: {
-          totalSize,
-          offset,
-          limit,
-          isTruncated,
-          warning,
-        },
+        content: finalContent || "Empty document",
+        metadata: { totalSize, offset, limit, isTruncated, warning },
       },
     };
   } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-export async function syncFolderState(folderId: string) {
-  try {
-    const drive = getDriveClient();
-
-    async function getAllDocumentsFlat(): Promise<any[]> {
-      let allDocs: any[] = [];
-      let pageToken: string | undefined = undefined;
-
-      do {
-        const docsRes: any = await drive.files.list({
-          // Chú ý: Đéo check parentId nữa, gom sạch sành sanh mọi file .doc mà Service Account nhìn thấy
-          q: `mimeType = 'application/vnd.google-apps.document' and trashed = false`,
-          fields: "nextPageToken, files(id, name, modifiedTime)",
-          spaces: "drive",
-          pageSize: 100, // Google API limit mỗi page, tự động nhảy trang nếu nhiều hơn
-          pageToken,
-          supportsAllDrives: true,
-          includeItemsFromAllDrives: true,
-        });
-        
-        if (docsRes.data.files) {
-          allDocs = allDocs.concat(docsRes.data.files);
-        }
-        pageToken = docsRes.data.nextPageToken || undefined;
-      } while (pageToken);
-
-      return allDocs;
-    }
-
-    const driveFiles = await getAllDocumentsFlat();
-    const dbMetaMap = await getProjectDocumentMetadata(folderId);
-
-    // Sync updated or new files
-    for (const file of driveFiles) {
-      if (!file.id) continue;
-      const dbModTime = dbMetaMap[file.id];
-      if (!dbModTime || dbModTime !== file.modifiedTime) {
-        await syncSingleDocument(file.id, folderId);
-      }
-    }
-
-    // Delete removed files from DB
-    for (const dbFileId of Object.keys(dbMetaMap)) {
-      if (!driveFiles.find((f) => f.id === dbFileId)) {
-        await deleteProjectDocument(folderId, dbFileId);
-      }
-    }
-
-    return { success: true };
-  } catch (err: any) {
-    console.error("Auto-sync failed:", err.message);
     return { success: false, error: err.message };
   }
 }

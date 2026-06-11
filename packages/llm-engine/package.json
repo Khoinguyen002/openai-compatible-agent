@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@workspace/core": "workspace:*",
-    "@workspace/doc-mcp": "workspace:*"
+    "@khoinguyen2002/doc-mcp": "workspace:*"
   },
   "types": "dist/index.d.ts",
   "exports": {
