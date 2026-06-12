@@ -1,18 +1,18 @@
-import { Redis } from "@upstash/redis";
-import { config } from "../config.js";
+import { v5 as uuidv5 } from "uuid";
+import {
+  getQdrantClient,
+  initVectorDB,
+  METADATA_COLLECTION,
+} from "./vector.js";
 
-const HASH_KEY = "doc_sync_state";
+const METADATA_NS = "2b671a64-40d5-491e-99b0-da01ff1f3342";
 
-let _redis: Redis | null = null;
+function getSyncPointId(fileId: string): string {
+  return uuidv5(`sync:${fileId}`, METADATA_NS);
+}
 
-function getRedis(): Redis {
-  if (!_redis) {
-    _redis = new Redis({
-      url: config.UPSTASH_REDIS_REST_URL,
-      token: config.UPSTASH_REDIS_REST_TOKEN,
-    });
-  }
-  return _redis;
+function getImagePointId(imageHash: string): string {
+  return uuidv5(`img:${imageHash}`, METADATA_NS);
 }
 
 export interface SyncEntry {
@@ -22,66 +22,134 @@ export interface SyncEntry {
 }
 
 export async function getAllSyncEntries(): Promise<Record<string, SyncEntry>> {
-  const redis = getRedis();
-  const raw = await redis.hgetall(HASH_KEY);
-  if (!raw) return {};
+  await initVectorDB();
+  const client = getQdrantClient();
 
   const result: Record<string, SyncEntry> = {};
-  for (const [fileId, value] of Object.entries(raw)) {
-    if (!value) continue;
-    try {
-      result[fileId] =
-        typeof value === "string"
-          ? (JSON.parse(value) as SyncEntry)
-          : (value as unknown as SyncEntry);
-    } catch {
-      // skip malformed entries
+  let offset: string | number | null | undefined = undefined;
+
+  do {
+    const page: { points: any[]; next_page_offset?: string | number | null } = await (client as any).scroll(METADATA_COLLECTION, {
+      filter: {
+        must: [{ key: "type", match: { value: "sync_state" } }]
+      },
+      with_payload: true,
+      with_vector: false,
+      limit: 100,
+      ...(offset !== undefined ? { offset } : {}),
+    });
+
+    for (const point of page.points) {
+      if (point.payload && point.payload.file_id) {
+        result[point.payload.file_id as string] = {
+          modifiedTime: point.payload.modifiedTime as string,
+          blockCount: point.payload.blockCount as number,
+          title: point.payload.title as string,
+        };
+      }
     }
-  }
+    offset = page.next_page_offset;
+  } while (offset != null);
+
   return result;
 }
 
 export async function getSyncEntry(fileId: string): Promise<SyncEntry | null> {
-  const redis = getRedis();
-  const raw = await redis.hget(HASH_KEY, fileId);
-  if (!raw) return null;
-  try {
-    return typeof raw === "string"
-      ? (JSON.parse(raw) as SyncEntry)
-      : (raw as unknown as SyncEntry);
-  } catch {
-    return null;
-  }
+  await initVectorDB();
+  const client = getQdrantClient();
+  const pointId = getSyncPointId(fileId);
+
+  const results = await client.retrieve(METADATA_COLLECTION, {
+    ids: [pointId],
+    with_payload: true,
+    with_vector: false,
+  });
+
+  if (results.length === 0) return null;
+  const payload = results[0].payload;
+  if (!payload) return null;
+
+  return {
+    modifiedTime: payload.modifiedTime as string,
+    blockCount: payload.blockCount as number,
+    title: payload.title as string,
+  };
 }
 
 export async function setSyncEntry(
   fileId: string,
   entry: SyncEntry
 ): Promise<void> {
-  const redis = getRedis();
-  await redis.hset(HASH_KEY, { [fileId]: JSON.stringify(entry) });
+  await initVectorDB();
+  const client = getQdrantClient();
+  const pointId = getSyncPointId(fileId);
+
+  await client.upsert(METADATA_COLLECTION, {
+    wait: true,
+    points: [
+      {
+        id: pointId,
+        vector: [1, 1, 1, 1], // Dummy vector with dim=4, non-zero magnitude
+        payload: {
+          type: "sync_state",
+          file_id: fileId,
+          modifiedTime: entry.modifiedTime,
+          blockCount: entry.blockCount,
+          title: entry.title,
+        },
+      },
+    ],
+  });
 }
 
 export async function deleteSyncEntry(fileId: string): Promise<void> {
-  const redis = getRedis();
-  await redis.hdel(HASH_KEY, fileId);
+  await initVectorDB();
+  const client = getQdrantClient();
+  const pointId = getSyncPointId(fileId);
+
+  await client.delete(METADATA_COLLECTION, {
+    wait: true,
+    points: [pointId],
+  });
 }
 
 // ─── Image Description Cache ──────────────────────────────────────────────────
-// Global hash: md5(imageBinary) → description text
-// Deduplicates across docs (same image used in multiple files reuses description)
-const IMG_DESC_KEY = "img_desc";
 
 export async function getImageDesc(imageHash: string): Promise<string | null> {
-  const redis = getRedis();
-  const raw = await redis.hget(IMG_DESC_KEY, imageHash);
-  return raw ? String(raw) : null;
+  await initVectorDB();
+  const client = getQdrantClient();
+  const pointId = getImagePointId(imageHash);
+
+  const results = await client.retrieve(METADATA_COLLECTION, {
+    ids: [pointId],
+    with_payload: true,
+    with_vector: false,
+  });
+
+  if (results.length === 0) return null;
+  return results[0].payload?.description as string | null;
 }
 
 export async function setImageDesc(
   imageHash: string,
   description: string
 ): Promise<void> {
-  const redis = getRedis();
-  await redis.hset(IMG_DESC_KEY, { [imageHash]: description });
+  await initVectorDB();
+  const client = getQdrantClient();
+  const pointId = getImagePointId(imageHash);
+
+  await client.upsert(METADATA_COLLECTION, {
+    wait: true,
+    points: [
+      {
+        id: pointId,
+        vector: [1, 1, 1, 1], // Dummy vector with dim=4, non-zero magnitude
+        payload: {
+          type: "img_desc",
+          image_hash: imageHash,
+          description,
+        },
+      },
+    ],
+  });
 }

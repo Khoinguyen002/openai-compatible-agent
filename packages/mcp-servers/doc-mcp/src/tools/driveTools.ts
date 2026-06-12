@@ -100,7 +100,7 @@ export async function syncAllDocuments() {
         await syncSingleDocument(
           file.id,
           file.modifiedTime,
-          file.name || "Untitled"
+          file.name || "Untitled",
         );
       }
     }
@@ -111,7 +111,7 @@ export async function syncAllDocuments() {
       if (!driveFileIds.has(fileId)) {
         console.error(`[Sync] Removing deleted doc: "${entry.title}"`);
         const pointIds = Array.from({ length: entry.blockCount }, (_, i) =>
-          getBlockPointId(fileId, i)
+          getBlockPointId(fileId, i),
         );
         await deletePointsByIds(pointIds);
         await deleteSyncEntry(fileId);
@@ -132,7 +132,7 @@ export async function syncAllDocuments() {
 export async function readDriveDocument(
   fileId: string,
   offset: number = 0,
-  limit: number = 10000
+  limit: number = 10000,
 ) {
   try {
     const drive = getDriveClient();

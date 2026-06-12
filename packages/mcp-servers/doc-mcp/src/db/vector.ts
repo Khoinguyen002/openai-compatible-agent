@@ -4,6 +4,12 @@ import { config } from "../config.js";
 
 let client: QdrantClient | null = null;
 const COLLECTION_NAME = "project_memory";
+export const METADATA_COLLECTION = "doc_metadata";
+
+export function getQdrantClient(): QdrantClient {
+  if (!client) throw new Error("Qdrant not initialized");
+  return client;
+}
 
 // Fixed namespace for deterministic point IDs (uuid v5)
 const POINT_NAMESPACE = "1b671a64-40d5-491e-99b0-da01ff1f3341";
@@ -17,55 +23,85 @@ export function getBlockPointId(fileId: string, blockIndex: number): string {
 }
 
 export async function initVectorDB() {
+  // Client singleton — only created once per process.
   if (!client) {
     client = new QdrantClient({
       url: config.QDRANT_URL,
       apiKey: config.QDRANT_API_KEY,
     });
     console.error(`Connected to Qdrant at ${config.QDRANT_URL}`);
+  }
 
-    const res = await client.getCollections();
-    const exists = res.collections.some((c) => c.name === COLLECTION_NAME);
-    if (!exists) {
-      console.error(`Creating Qdrant collection: ${COLLECTION_NAME}`);
-      const dummyVector = await embedText("test");
-      const dimension = dummyVector.length;
+  // Collections are checked on EVERY call so they can be re-created
+  // if they were dropped while the server process is still running.
+  const res = await client.getCollections();
 
-      await client.createCollection(COLLECTION_NAME, {
-        vectors: { size: dimension, distance: "Cosine" },
-      });
-      await client.createPayloadIndex(COLLECTION_NAME, {
-        field_name: "source",
+  const exists = res.collections.some((c) => c.name === COLLECTION_NAME);
+  if (!exists) {
+    console.error(`Creating Qdrant collection: ${COLLECTION_NAME}`);
+    const dummyVector = await embedText("test");
+    const dimension = dummyVector.length;
+
+    await client.createCollection(COLLECTION_NAME, {
+      vectors: { size: dimension, distance: "Cosine" },
+    });
+      try {
+        await client.createPayloadIndex(COLLECTION_NAME, {
+          field_name: "source",
+          field_schema: "keyword",
+        });
+        await client.createPayloadIndex(COLLECTION_NAME, {
+          field_name: "file_id",
+          field_schema: "keyword",
+        });
+        await client.createPayloadIndex(COLLECTION_NAME, {
+          field_name: "block_index",
+          field_schema: "integer",
+        });
+        await client.createPayloadIndex(COLLECTION_NAME, {
+          field_name: "block_hash",
+          field_schema: "keyword",
+        });
+        // Full-text index on `text` payload for exact/keyword search.
+        await client.createPayloadIndex(COLLECTION_NAME, {
+          field_name: "text",
+          field_schema: {
+            type: "text",
+            tokenizer: "whitespace",
+            min_token_len: 2,
+            max_token_len: 200,
+            lowercase: true,
+          } as any,
+        });
+      } catch (idxErr: any) {
+        console.error("Warning: Failed to create some payload indices:", idxErr.message);
+      }
+    console.error(
+      `Collection ${COLLECTION_NAME} created with dimension ${dimension}.`
+    );
+  }
+
+  const metaExists = res.collections.some((c) => c.name === METADATA_COLLECTION);
+  if (!metaExists) {
+    console.error(`Creating Qdrant collection: ${METADATA_COLLECTION} with dimension 4`);
+    await client.createCollection(METADATA_COLLECTION, {
+      vectors: { size: 4, distance: "Cosine" },
+    });
+    try {
+      await client.createPayloadIndex(METADATA_COLLECTION, {
+        field_name: "type",
         field_schema: "keyword",
       });
-      await client.createPayloadIndex(COLLECTION_NAME, {
+      await client.createPayloadIndex(METADATA_COLLECTION, {
         field_name: "file_id",
         field_schema: "keyword",
       });
-      await client.createPayloadIndex(COLLECTION_NAME, {
-        field_name: "block_index",
-        field_schema: "integer",
-      });
-      await client.createPayloadIndex(COLLECTION_NAME, {
-        field_name: "block_hash",
+      await client.createPayloadIndex(METADATA_COLLECTION, {
+        field_name: "image_hash",
         field_schema: "keyword",
       });
-      // Full-text index on `text` payload for exact/keyword search.
-      // whitespace tokenizer keeps API paths (e.g. /v1/foo/bar) as single tokens.
-      // lowercase=true makes searches case-insensitive.
-      await client.createPayloadIndex(COLLECTION_NAME, {
-        field_name: "text",
-        field_schema: {
-          type: "text",
-          tokenizer: "whitespace",
-          min_token_len: 2,
-          max_token_len: 200,
-          lowercase: true,
-        } as any,
-      });
-      console.error(
-        `Collection ${COLLECTION_NAME} created with dimension ${dimension}.`
-      );
+    } catch (metaIdxErr: any) {
+      console.error("Warning: Failed to create metadata payload indices:", metaIdxErr.message);
     }
   }
 }

@@ -26,10 +26,6 @@ const schema = z.object({
 
   // Vision LLM model ID for image descriptions (optional, skip if not set)
   VISION_MODEL_ID: z.string().optional(),
-
-  // Upstash Redis (for sync state)
-  UPSTASH_REDIS_REST_URL: z.string().url(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
 });
 
 function loadConfig() {

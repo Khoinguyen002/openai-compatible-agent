@@ -3,7 +3,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { listDriveFiles, readDriveDocument } from "./tools/driveTools.js";
-import { saveAgentNote, searchKnowledge, searchExact } from "./tools/knowledgeTools.js";
+import {
+  saveAgentNote,
+  searchKnowledge,
+  searchExact,
+} from "./tools/knowledgeTools.js";
 
 const server = new McpServer({
   name: "doc-agent",
@@ -33,7 +37,7 @@ server.registerTool(
     return {
       content: [{ type: "text", text: JSON.stringify(res.results, null, 2) }],
     };
-  }
+  },
 );
 
 server.registerTool(
@@ -46,7 +50,9 @@ server.registerTool(
       offset: z
         .number()
         .optional()
-        .describe("Starting character index in the Markdown content (default: 0)"),
+        .describe(
+          "Starting character index in the Markdown content (default: 0)",
+        ),
       limit: z
         .number()
         .optional()
@@ -64,7 +70,7 @@ server.registerTool(
     return {
       content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
     };
-  }
+  },
 );
 
 server.registerTool(
@@ -99,7 +105,7 @@ server.registerTool(
         },
       ],
     };
-  }
+  },
 );
 
 server.registerTool(
@@ -114,7 +120,7 @@ server.registerTool(
       term: z
         .string()
         .describe(
-          "Exact term to search for (e.g. '/product-orchestrator/v1/products/filter', 'ServiceCode.mkp')"
+          "Exact term to search for (e.g. '/product-orchestrator/v1/products/filter', 'ServiceCode.mkp')",
         ),
       limit: z
         .number()
@@ -141,7 +147,7 @@ server.registerTool(
         },
       ],
     };
-  }
+  },
 );
 
 async function run() {
