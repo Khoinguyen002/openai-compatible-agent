@@ -77,7 +77,8 @@ server.registerTool(
   "search_knowledge",
   {
     description:
-      "Semantic vector search across all accessible Google Drive documents. Automatically syncs latest document changes before searching. Returns relevant Markdown chunks with title and character offset.",
+      "Semantic vector search across all accessible Google Drive documents. Automatically syncs latest document changes before searching. Returns relevant Markdown chunks with title and character offset.\n" +
+      "CRITICAL AGENT INSTRUCTION: The default topK is only 3. If you are doing comprehensive research, looking for detailed API payloads, or want to ensure you don't miss vital related chunks, you MUST pass a larger topK (e.g. 15 or 20).",
     inputSchema: {
       query: z.string().describe("The search query"),
       topK: z
