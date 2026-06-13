@@ -50,27 +50,35 @@ Before running the server, you must provide the following environment variables.
 
 ## MCP Tools Exposed
 
-This server exposes 4 main tools for your LLM agents to interact with your knowledge base:
+This server exposes 6 main tools for your LLM agents to interact with your knowledge base:
 
 1. **`list_drive_files`**
    - *Description*: Lists all Google Drive documents accessible to the agent.
    - *Parameters*: `keyword` (optional string) to filter by title.
 
 2. **`read_drive_document`**
-   - *Description*: Reads the Markdown content of a specific Google Drive document. Supports pagination.
+   - *Description*: Reads the Markdown content of a specific Google Drive document. Pulls from sub-ms in-process RAM cache if available.
    - *Parameters*: `fileId` (required), `offset` (optional, default 0), `limit` (optional, default 10000).
 
 3. **`search_knowledge`**
-   - *Description*: Performs a semantic vector search across all synced documents. Triggers an auto-sync to ensure the index is up-to-date before searching.
+   - *Description*: Performs a semantic vector search across all synced documents, including agent-contributed metadata.
    - *Parameters*: `query` (required string), `topK` (optional, default 3).
 
 4. **`search_exact`**
-   - *Description*: Performs an exhaustive exact-keyword search across all synced documents. Ideal for finding specific API paths, error codes, or function names.
+   - *Description*: Performs an exhaustive exact-keyword search across the in-process RAM cache. Ideal for finding specific API paths, error codes, or function names.
    - *Parameters*: `term` (required string), `limit` (optional, default 50).
+
+5. **`contribute_document_metadata`**
+   - *Description*: Crowdsource knowledge by injecting agent-generated metadata (summaries, keywords, APIs) into the vector DB. These chunks are stored persistently with `block_index = -1` and instantly enhance the accuracy of `search_knowledge` without polluting the real document content.
+   - *Parameters*: `fileId` (required string), `summary` (required string), `keywords` (optional string array), `apis` (optional string array).
+
+6. **`sync_now`**
+   - *Description*: Forces an immediate background sync of all accessible Google Drive documents and re-warms the in-process RAM cache.
 
 ## Architecture & Workflow
 
-1. **Ingestion**: When a search is requested (or `read_drive_document` is called), the system checks Google Drive for any new or modified files based on the `modifiedTime` stored in Qdrant's metadata collection.
-2. **Parsing & Chunking**: If a file is modified, the document is fetched via Google Docs API, converted to a generic HAST tree, processed for images, and converted into clean Markdown. The Markdown is then intelligently chunked into overlapping sections based on headings and max size constraints.
-3. **Embedding**: Obsolete chunks are deleted from Qdrant. Unchanged chunks have their offsets updated. New or modified chunks are vectorized in batches via the OpenRouter API.
-4. **Storage**: Vectors and metadata (hash, offset, title) are pushed to Qdrant. The document's new sync state is committed to Qdrant's metadata collection.
+1. **Startup & Caching**: On startup, the server pulls all document chunks (except agent metadata) from Qdrant into an in-process RAM cache for sub-millisecond retrieval and exact string matching. A background process periodically synchronizes document changes.
+2. **Ingestion**: The system checks Google Drive for any new or modified files based on the `modifiedTime` stored in Qdrant's metadata collection.
+3. **Parsing & Chunking**: If a file is modified, the document is fetched via Google Docs API, converted to a generic HAST tree, processed for images, and converted into clean Markdown. The Markdown is then intelligently chunked into overlapping sections based on headings and max size constraints.
+4. **Embedding**: Obsolete chunks are deleted from Qdrant. Unchanged chunks have their offsets updated. New or modified chunks are vectorized in batches via the OpenRouter API.
+5. **Storage**: Vectors and metadata (hash, offset, title) are pushed to Qdrant. The document's new sync state is committed to Qdrant's metadata collection, and the in-process cache is subsequently updated.
