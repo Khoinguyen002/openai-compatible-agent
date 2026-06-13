@@ -157,6 +157,11 @@ export async function readDriveDocument(
   limit: number = 10000,
 ) {
   try {
+    // If agent provides negative offset (e.g. from agent_metadata chunk), clamp to 0
+    if (offset < 0) {
+      offset = 0;
+    }
+
     // ── Cache-first: reconstruct from in-process chunk cache ──────────────────
     // chunkMarkdown() splits without overlap, so chunks reconstruct the
     // exact original markdown. No Drive API call needed when cache is warm.

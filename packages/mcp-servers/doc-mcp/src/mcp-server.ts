@@ -8,6 +8,7 @@ import { loadCacheFromQdrant, getCacheStats } from "./db/chunkCache.js";
 import {
   searchKnowledge,
   searchExact,
+  contributeDocumentMetadata,
 } from "./tools/knowledgeTools.js";
 
 const server = new McpServer({
@@ -104,6 +105,42 @@ server.registerTool(
             typeof res.results === "string"
               ? res.results
               : JSON.stringify(res.results),
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  "contribute_document_metadata",
+  {
+    description:
+      "Contribute agent-generated metadata (summary, keywords, APIs) to a Google Drive document. " +
+      "This greatly improves semantic search accuracy by injecting an enriched vector chunk. " +
+      "Does not modify the original Drive document.\n" +
+      "AGENT INSTRUCTION: Proactively call this tool after reading or analyzing any Google Drive document. " +
+      "If you spend time understanding a file, summarizing it, or extracting APIs/concepts, crowdsource " +
+      "your findings by calling this tool so future agents can find it instantly via vector search.",
+    inputSchema: {
+      fileId: z.string().describe("The Google Drive file ID"),
+      summary: z.string().describe("A concise summary of the document's purpose and contents"),
+      keywords: z.array(z.string()).optional().describe("List of relevant keywords, concepts, or terms"),
+      apis: z.array(z.string()).optional().describe("List of API endpoints, if any (e.g., /v1/auth)"),
+    },
+  },
+  async ({ fileId, summary, keywords, apis }) => {
+    const res = await contributeDocumentMetadata(fileId, summary, keywords, apis);
+    if (!res.success) {
+      return {
+        content: [{ type: "text", text: `Error: ${res.error}` }],
+        isError: true,
+      };
+    }
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Successfully contributed metadata for file ${fileId}.`,
         },
       ],
     };

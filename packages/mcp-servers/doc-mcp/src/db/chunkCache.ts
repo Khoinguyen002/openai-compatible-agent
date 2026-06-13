@@ -100,6 +100,9 @@ export async function loadCacheFromQdrant(): Promise<void> {
       const p = point.payload;
       if (!p?.file_id || !p?.text) continue;
 
+      // Filter out metadata chunks (block_index < 0) to prevent them from corrupting the contiguous document cache
+      if (typeof p.block_index === "number" && p.block_index < 0) continue;
+
       const fileId = p.file_id as string;
       if (!fileChunks.has(fileId)) fileChunks.set(fileId, []);
       fileChunks.get(fileId)!.push({
