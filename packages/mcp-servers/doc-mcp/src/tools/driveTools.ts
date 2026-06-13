@@ -3,7 +3,7 @@ import { google } from "googleapis";
 import { config } from "../config.js";
 import { deletePointsByIds, getBlockPointId } from "../db/vector.js";
 import { getAllSyncEntries, deleteSyncEntry, tryAcquireSyncLock, releaseSyncLock } from "../db/syncState.js";
-import { removeFileChunks } from "../db/chunkCache.js";
+import { removeFileChunks, readFromChunkCache } from "../db/chunkCache.js";
 import { syncSingleDocument } from "./ingestFlow.js";
 
 function getDriveClient() {
@@ -157,6 +157,26 @@ export async function readDriveDocument(
   limit: number = 10000,
 ) {
   try {
+    // ── Cache-first: reconstruct from in-process chunk cache ──────────────────
+    // chunkMarkdown() splits without overlap, so chunks reconstruct the
+    // exact original markdown. No Drive API call needed when cache is warm.
+    const cached = readFromChunkCache(fileId, offset, limit);
+    if (cached !== null) {
+      const { content: sliced, totalSize } = cached;
+      const isTruncated = offset + sliced.length < totalSize;
+      let finalContent = sliced || "Empty document";
+      let warning: string | undefined;
+      if (isTruncated) {
+        warning = `[WARNING]: This is not the entire document. Content has been truncated from character ${offset} to ${offset + sliced.length} out of ${totalSize} total characters. Please use 'offset' and 'limit' parameters to read the rest of the document, or use search_knowledge to query specific details.`;
+        finalContent += `\n\n${warning}`;
+      }
+      return {
+        success: true,
+        data: { content: finalContent, metadata: { totalSize, offset, limit, isTruncated, warning, source: "cache" } },
+      };
+    }
+
+    // ── Cache miss (cold start / not yet synced) ── fall back to Drive API ──
     const drive = getDriveClient();
     const fileInfo = await drive.files.get({
       fileId,
@@ -184,7 +204,7 @@ export async function readDriveDocument(
       success: true,
       data: {
         content: finalContent || "Empty document",
-        metadata: { totalSize, offset, limit, isTruncated, warning },
+        metadata: { totalSize, offset, limit, isTruncated, warning, source: "drive" },
       },
     };
   } catch (err: any) {

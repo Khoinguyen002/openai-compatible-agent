@@ -3,6 +3,7 @@ import { v4 as uuidv4, v5 as uuidv5 } from "uuid";
 import { config } from "../config.js";
 
 let client: QdrantClient | null = null;
+let collectionReady = false; // checked once per process — avoids getCollections() on every DB call
 export const COLLECTION_NAME = "project_memory";
 export const METADATA_COLLECTION = "doc_metadata";
 
@@ -28,9 +29,14 @@ export async function initVectorDB() {
     client = new QdrantClient({
       url: config.QDRANT_URL,
       apiKey: config.QDRANT_API_KEY,
+      timeout: 60_000, // 60s — handles free-tier cold starts (default 10s too short)
     });
     console.error(`Connected to Qdrant at ${config.QDRANT_URL}`);
   }
+
+  // Collection existence check — only once per process lifetime.
+  // Re-run only if collection was previously missing (rare, e.g. manual drop).
+  if (collectionReady) return;
 
   // Collections are checked on EVERY call so they can be re-created
   // if they were dropped while the server process is still running.
@@ -104,6 +110,8 @@ export async function initVectorDB() {
       console.error("Warning: Failed to create metadata payload indices:", metaIdxErr.message);
     }
   }
+
+  collectionReady = true; // subsequent calls to initVectorDB() are instant no-ops
 }
 
 export async function embedText(

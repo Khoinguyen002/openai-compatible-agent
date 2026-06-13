@@ -159,3 +159,52 @@ export function getCacheStats(): {
     estimatedMB: (estimatedBytes / 1024 / 1024).toFixed(2),
   };
 }
+
+/**
+ * Reconstruct document content for a given (offset, limit) window
+ * directly from the chunk cache — no Drive API call needed.
+ *
+ * Works because chunkMarkdown() splits without overlap:
+ *   chunks.join("") === original markdown (exact character positions preserved)
+ *
+ * Returns null if the file is not in cache (cold start / not yet synced).
+ */
+export function readFromChunkCache(
+  fileId: string,
+  offset: number,
+  limit: number
+): { content: string; totalSize: number; title: string } | null {
+  const chunks = cache.get(fileId);
+  if (!chunks || chunks.length === 0) return null;
+
+  // Total doc size = last chunk's end position
+  const lastChunk = chunks[chunks.length - 1];
+  const totalSize = lastChunk.offset + lastChunk.text.length;
+  const title = chunks[0]?.title ?? "Untitled";
+
+  if (offset >= totalSize) {
+    return { content: "", totalSize, title };
+  }
+
+  const end = offset + limit;
+
+  // Find chunks that overlap the requested window [offset, end)
+  const relevant = chunks.filter((c) => {
+    const chunkEnd = c.offset + c.text.length;
+    return chunkEnd > offset && c.offset < end;
+  });
+
+  if (relevant.length === 0) {
+    return { content: "", totalSize, title };
+  }
+
+  // Concatenate relevant chunks (no overlap → safe to just join)
+  const firstOffset = relevant[0].offset;
+  const joined = relevant.map((c) => c.text).join("");
+
+  // Slice to exact requested window
+  const startInJoined = offset - firstOffset;
+  const sliced = joined.substring(startInJoined, startInJoined + limit);
+
+  return { content: sliced, totalSize, title };
+}

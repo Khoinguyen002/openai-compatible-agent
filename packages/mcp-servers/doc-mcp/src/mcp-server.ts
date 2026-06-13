@@ -192,6 +192,9 @@ server.registerTool(
 async function run() {
   // ── Option B: warm chunk cache from Qdrant before accepting connections ──
   // Ensures search_exact hits in-memory cache from the very first tool call.
+  // If Qdrant is unreachable, let the error propagate — better to fail fast
+  // and visibly than silently start with an empty cache.
+  // The 60s client timeout handles free-tier cold starts gracefully.
   console.error("[ChunkCache] Warming cache from Qdrant...");
   await loadCacheFromQdrant();
 
