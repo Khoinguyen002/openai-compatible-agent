@@ -24,6 +24,8 @@ const schema = z.object({
   // Max embedding API requests per minute
   EMBEDDING_RPM: z.coerce.number().int().positive().default(40),
 
+  // Minimum seconds between full Drive syncs across ALL instances (distributed lock TTL)
+  SYNC_INTERVAL_SECONDS: z.coerce.number().int().positive().default(60),
 });
 
 function loadConfig() {

@@ -17,6 +17,7 @@ import {
   ChunkUpsert,
 } from "../db/vector.js";
 import { getSyncEntry, setSyncEntry } from "../db/syncState.js";
+import { updateFileChunks } from "../db/chunkCache.js";
 import { waitForRateLimit } from "../db/rateLimiter.js";
 
 // ─── Turndown setup ───────────────────────────────────────────────────────────
@@ -353,12 +354,23 @@ export async function syncSingleDocument(
     upsertedCount += batch.length;
   }
 
-  // 8. Update sync state in Redis
+  // 8. Update sync state
   await setSyncEntry(fileId, {
     modifiedTime: driveModifiedTime,
     blockCount: newBlocks.length,
     title,
   });
+
+  // 9. Update in-process chunk cache with full new state of this file
+  let cacheOffset = 0;
+  updateFileChunks(
+    fileId,
+    newBlocks.map((text, i) => {
+      const chunkOffset = cacheOffset;
+      cacheOffset += text.length;
+      return { text, title, blockIndex: i, offset: chunkOffset };
+    })
+  );
 
   console.error(
     `[Sync] "${title}": ${upsertedCount} upserted, ${skippedCount} skipped, ${obsoletePointIds.length} deleted.`

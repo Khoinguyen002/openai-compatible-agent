@@ -1,7 +1,9 @@
+import { randomUUID } from "crypto";
 import { google } from "googleapis";
 import { config } from "../config.js";
 import { deletePointsByIds, getBlockPointId } from "../db/vector.js";
-import { getAllSyncEntries, deleteSyncEntry } from "../db/syncState.js";
+import { getAllSyncEntries, deleteSyncEntry, tryAcquireSyncLock, releaseSyncLock } from "../db/syncState.js";
+import { removeFileChunks } from "../db/chunkCache.js";
 import { syncSingleDocument } from "./ingestFlow.js";
 
 function getDriveClient() {
@@ -67,7 +69,19 @@ export async function listDriveFiles(keyword?: string) {
  * - New/changed files → syncSingleDocument()
  * - Files removed from Drive → delete from Qdrant + Redis
  */
-export async function syncAllDocuments() {
+export async function syncAllDocuments({ force = false }: { force?: boolean } = {}) {
+  const syncIntervalMs = config.SYNC_INTERVAL_SECONDS * 1000;
+  const instanceId = randomUUID();
+
+  // ── Distributed lock: skip if fresh or another instance is syncing ──
+  const lockResult = await tryAcquireSyncLock(syncIntervalMs, instanceId, force);
+  if (!lockResult.acquired) {
+    console.error(`[Sync] Skipped — ${lockResult.reason}`);
+    return { success: true, skipped: true };
+  }
+
+  console.error(`[Sync] Lock acquired (instance=${instanceId.slice(0, 8)})`);
+
   try {
     const drive = getDriveClient();
 
@@ -88,7 +102,7 @@ export async function syncAllDocuments() {
       pageToken = res.data.nextPageToken || undefined;
     } while (pageToken);
 
-    // Get all Redis sync entries
+    // Get all sync entries
     const syncEntries = await getAllSyncEntries();
 
     // Sync new or changed files
@@ -115,11 +129,19 @@ export async function syncAllDocuments() {
         );
         await deletePointsByIds(pointIds);
         await deleteSyncEntry(fileId);
+        removeFileChunks(fileId);
       }
     }
 
+    // ── Release lock and stamp completion time ──
+    const completedAt = new Date().toISOString();
+    await releaseSyncLock(completedAt);
+    console.error(`[Sync] Done — lock released, next sync after ${config.SYNC_INTERVAL_SECONDS}s`);
+
     return { success: true };
   } catch (err: any) {
+    // Release lock on failure so other instances can retry
+    await releaseSyncLock(lockResult.lastSyncCompletedAt ?? new Date(0).toISOString()).catch(() => {});
     console.error("syncAllDocuments failed:", err.message);
     return { success: false, error: err.message };
   }

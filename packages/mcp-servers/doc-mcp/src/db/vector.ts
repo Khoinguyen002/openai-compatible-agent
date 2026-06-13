@@ -3,7 +3,7 @@ import { v4 as uuidv4, v5 as uuidv5 } from "uuid";
 import { config } from "../config.js";
 
 let client: QdrantClient | null = null;
-const COLLECTION_NAME = "project_memory";
+export const COLLECTION_NAME = "project_memory";
 export const METADATA_COLLECTION = "doc_metadata";
 
 export function getQdrantClient(): QdrantClient {

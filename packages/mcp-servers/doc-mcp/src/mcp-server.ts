@@ -2,7 +2,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { listDriveFiles, readDriveDocument } from "./tools/driveTools.js";
+import { listDriveFiles, readDriveDocument, syncAllDocuments } from "./tools/driveTools.js";
+import { config } from "./config.js";
+import { loadCacheFromQdrant, getCacheStats } from "./db/chunkCache.js";
 import {
   searchKnowledge,
   searchExact,
@@ -115,7 +117,7 @@ server.registerTool(
       "Exhaustive keyword search across all accessible Google Drive documents using full-text index. " +
       "Unlike search_knowledge (semantic/vector), this finds EVERY chunk containing the exact term — " +
       "ideal for specific identifiers: API paths (/v1/foo/bar), function names, config keys, error codes. " +
-      "Case-insensitive. Automatically syncs latest document changes before searching.",
+      "Case-insensitive.",
     inputSchema: {
       term: z
         .string()
@@ -150,10 +152,69 @@ server.registerTool(
   },
 );
 
+// ── Shared sync runner (reused by background interval + sync_now tool) ────────
+async function runSync({ force = false }: { force?: boolean } = {}): Promise<string> {
+  const before = getCacheStats();
+  const result = await syncAllDocuments({ force });
+  const after = getCacheStats();
+  return JSON.stringify({
+    ...result,
+    cache: {
+      fileCount: after.fileCount,
+      totalChunks: after.totalChunks,
+      estimatedMB: after.estimatedMB,
+      chunksDelta: after.totalChunks - before.totalChunks,
+    },
+  }, null, 2);
+}
+
+server.registerTool(
+  "sync_now",
+  {
+    description:
+      "Force an immediate sync of all Google Drive documents into Qdrant and the in-process cache. " +
+      "Bypasses the normal sync interval TTL. Returns sync result and cache RAM stats.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const summary = await runSync({ force: true });
+      return { content: [{ type: "text", text: summary }] };
+    } catch (err: any) {
+      return {
+        content: [{ type: "text", text: `Error: ${err.message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
 async function run() {
+  // ── Option B: warm chunk cache from Qdrant before accepting connections ──
+  // Ensures search_exact hits in-memory cache from the very first tool call.
+  console.error("[ChunkCache] Warming cache from Qdrant...");
+  await loadCacheFromQdrant();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("doc-agent MCP server v1.2.0 running on stdio");
+
+  const stats = getCacheStats();
+  console.error(
+    `doc-agent MCP server v1.4.0 running — cache: ${stats.totalChunks} chunks / ${stats.fileCount} files / ~${stats.estimatedMB} MB`
+  );
+
+  // ── Background sync scheduler ───────────────────────────────────────────────
+  // Syncs Drive changes into Qdrant + updates in-process cache periodically.
+  const syncIntervalMs = config.SYNC_INTERVAL_SECONDS * 1000;
+
+  // No initial delay — cache is already warm, first sync runs after one full interval
+  const timer = setInterval(
+    () => runSync().catch((err) => console.error("[BackgroundSync] Unhandled error:", err.message)),
+    syncIntervalMs
+  );
+  timer.unref();
+
+  console.error(`[BackgroundSync] Scheduled: every ${config.SYNC_INTERVAL_SECONDS}s`);
 }
 
 run().catch((error) => {
