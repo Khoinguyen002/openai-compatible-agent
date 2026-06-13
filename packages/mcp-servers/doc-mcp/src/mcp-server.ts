@@ -4,7 +4,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { listDriveFiles, readDriveDocument } from "./tools/driveTools.js";
 import {
-  saveAgentNote,
   searchKnowledge,
   searchExact,
 } from "./tools/knowledgeTools.js";

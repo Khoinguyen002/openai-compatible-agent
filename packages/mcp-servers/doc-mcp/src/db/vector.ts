@@ -377,8 +377,11 @@ export async function exactSearchChunks(
       });
 
     for (const point of page.points) {
-      const text = ((point.payload?.text as string) ?? "").toLowerCase();
-      if (text.includes(lowerTerm)) {
+      const raw = (point.payload?.text as string) ?? "";
+      // Strip Markdown backslash escapes (e.g. \_ → _, \* → *, \[ → [)
+      // so users can search `access_token` and match stored `access\_token`
+      const normalized = raw.replace(/\\(.)/g, "$1").toLowerCase();
+      if (normalized.includes(lowerTerm)) {
         results.push({ id: point.id, ...point.payload });
         if (results.length >= limit) break;
       }
@@ -389,30 +392,3 @@ export async function exactSearchChunks(
   return results;
 }
 
-/**
- * Upsert agent note với random UUID (không có fileId).
- */
-export async function upsertAgentNote(text: string): Promise<void> {
-  await initVectorDB();
-  if (!client) throw new Error("Qdrant not initialized");
-
-  const vector = await embedText(text);
-  await client.upsert(COLLECTION_NAME, {
-    wait: true,
-    points: [
-      {
-        id: uuidv4(),
-        vector,
-        payload: {
-          text,
-          title: "Agent Note",
-          block_index: 0,
-          block_hash: "",
-          source: "agent",
-          offset: 0,
-        },
-      },
-    ],
-  });
-  console.error("Upserted agent note to Qdrant.");
-}

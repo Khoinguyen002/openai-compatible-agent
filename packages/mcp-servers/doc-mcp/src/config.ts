@@ -24,8 +24,6 @@ const schema = z.object({
   // Max embedding API requests per minute
   EMBEDDING_RPM: z.coerce.number().int().positive().default(40),
 
-  // Vision LLM model ID for image descriptions (optional, skip if not set)
-  VISION_MODEL_ID: z.string().optional(),
 });
 
 function loadConfig() {

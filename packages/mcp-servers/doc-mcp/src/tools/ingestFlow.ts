@@ -16,7 +16,7 @@ import {
   updateBlockOffsets,
   ChunkUpsert,
 } from "../db/vector.js";
-import { getSyncEntry, setSyncEntry, getImageDesc, setImageDesc } from "../db/syncState.js";
+import { getSyncEntry, setSyncEntry } from "../db/syncState.js";
 import { waitForRateLimit } from "../db/rateLimiter.js";
 
 // ─── Turndown setup ───────────────────────────────────────────────────────────
@@ -64,152 +64,11 @@ function getGoogleClients() {
   };
 }
 
-// ─── HAST Image Collection ───────────────────────────────────────────────────
-/** Collect all img src URLs from a HAST tree. */
-function collectImageSrcs(node: any, srcs: Set<string>) {
-  if (!node) return;
-  if (node.type === "element" && node.tagName === "img" && node.properties?.src) {
-    srcs.add(String(node.properties.src));
-  }
-  if (Array.isArray(node.children)) {
-    for (const child of node.children) collectImageSrcs(child, srcs);
-  }
-}
-
-/** Replace img nodes with description text from descMap. */
-function sanitizeHast(node: any, descMap: Map<string, string>) {
-  if (!node) return;
-  if (node.type === "element" && node.tagName === "img") {
-    const src = String(node.properties?.src ?? "");
-    const description =
-      descMap.get(src) ||
-      (node.properties?.alt ? String(node.properties.alt) : "");
-    const label = description ? `: ${description}` : "";
-    node.tagName = "span";
-    node.properties = { className: ["img-placeholder"] };
-    node.children = [{ type: "text", value: `[Image${label}]` }];
-    return;
-  }
-  if (Array.isArray(node.children)) {
-    for (const child of node.children) sanitizeHast(child, descMap);
-  }
-}
-
-// ─── Vision LLM ──────────────────────────────────────────────────────────────
-async function downloadImage(
-  url: string
-): Promise<{ buffer: Buffer; mimeType: string } | null> {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return null;
-    const contentType = res.headers.get("content-type") || "image/png";
-    const mimeType = contentType.split(";")[0].trim();
-    const buffer = Buffer.from(await res.arrayBuffer());
-    return { buffer, mimeType };
-  } catch {
-    return null;
-  }
-}
-
-async function describeImageWithVision(
-  buffer: Buffer,
-  mimeType: string
-): Promise<string> {
-  const base64 = buffer.toString("base64");
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: config.VISION_MODEL_ID,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: { url: `data:${mimeType};base64,${base64}` },
-            },
-            {
-              type: "text",
-              text: "Describe this image concisely in 1-3 sentences for a developer reading technical documentation. Focus on UI layout, data shown, flow diagrams, or key visible text.",
-            },
-          ],
-        },
-      ],
-      max_tokens: 300,
-    }),
-  });
-
-  if (!res.ok) {
-    console.error(`[Vision] API error: ${res.status}`);
-    return "";
-  }
-  const json: any = await res.json();
-  return json.choices?.[0]?.message?.content?.trim() || "";
-}
-
-/**
- * Process all images in a HAST tree:
- * 1. Download image binary
- * 2. Check Redis cache by binary hash
- * 3. Call vision LLM if cache miss
- * 4. Return src→description map
- */
-async function processImages(hast: any): Promise<Map<string, string>> {
-  const descMap = new Map<string, string>();
-
-  if (!config.VISION_MODEL_ID) {
-    // Vision not configured — fall back to alt text only
-    return descMap;
-  }
-
-  const srcs = new Set<string>();
-  collectImageSrcs(hast, srcs);
-  if (srcs.size === 0) return descMap;
-
-  console.error(`[Vision] Processing ${srcs.size} image(s)...`);
-
-  for (const src of srcs) {
-    const image = await downloadImage(src);
-    if (!image) {
-      console.error(`[Vision] Failed to download: ${src.substring(0, 60)}...`);
-      continue;
-    }
-
-    const imageHash = crypto.createHash("md5").update(image.buffer).digest("hex");
-
-    // Check Redis cache
-    const cached = await getImageDesc(imageHash);
-    if (cached) {
-      console.error(`[Vision] Cache hit for image hash ${imageHash.substring(0, 8)}`);
-      descMap.set(src, cached);
-      continue;
-    }
-
-    // Call vision LLM
-    console.error(`[Vision] Describing image hash ${imageHash.substring(0, 8)}...`);
-    const description = await describeImageWithVision(image.buffer, image.mimeType);
-
-    if (description) {
-      await setImageDesc(imageHash, description);
-      descMap.set(src, description);
-      console.error(`[Vision] Stored: "${description.substring(0, 80)}..."`);
-    }
-  }
-
-  return descMap;
-}
-
 // ─── HTML → Markdown ─────────────────────────────────────────────────────────
 export async function googleDocToMarkdown(
   docJson: any
 ): Promise<string> {
   const hast = toHast(docJson);
-  const descMap = await processImages(hast);
-  sanitizeHast(hast, descMap);
   const html = toHtml(hast as any);
   // 1. Strip inline styles/attrs from table/row/cell tags
   let cleanHtml = html.replace(

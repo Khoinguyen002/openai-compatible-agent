@@ -1,17 +1,5 @@
-import { searchProjectMemory, upsertAgentNote, exactSearchChunks } from "../db/vector.js";
+import { searchProjectMemory, exactSearchChunks } from "../db/vector.js";
 import { syncAllDocuments } from "./driveTools.js";
-
-export async function saveAgentNote(content: string) {
-  try {
-    await upsertAgentNote(content);
-    return {
-      success: true,
-      message: "Successfully stored note in vector memory.",
-    };
-  } catch (err: any) {
-    return { success: false, error: `Failed to store note: ${err.message}` };
-  }
-}
 
 export async function searchKnowledge(query: string, topK: number = 3) {
   try {

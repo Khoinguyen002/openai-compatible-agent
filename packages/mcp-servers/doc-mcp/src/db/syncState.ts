@@ -11,9 +11,6 @@ function getSyncPointId(fileId: string): string {
   return uuidv5(`sync:${fileId}`, METADATA_NS);
 }
 
-function getImagePointId(imageHash: string): string {
-  return uuidv5(`img:${imageHash}`, METADATA_NS);
-}
 
 export interface SyncEntry {
   modifiedTime: string;
@@ -110,46 +107,5 @@ export async function deleteSyncEntry(fileId: string): Promise<void> {
   await client.delete(METADATA_COLLECTION, {
     wait: true,
     points: [pointId],
-  });
-}
-
-// ─── Image Description Cache ──────────────────────────────────────────────────
-
-export async function getImageDesc(imageHash: string): Promise<string | null> {
-  await initVectorDB();
-  const client = getQdrantClient();
-  const pointId = getImagePointId(imageHash);
-
-  const results = await client.retrieve(METADATA_COLLECTION, {
-    ids: [pointId],
-    with_payload: true,
-    with_vector: false,
-  });
-
-  if (results.length === 0) return null;
-  return results[0].payload?.description as string | null;
-}
-
-export async function setImageDesc(
-  imageHash: string,
-  description: string
-): Promise<void> {
-  await initVectorDB();
-  const client = getQdrantClient();
-  const pointId = getImagePointId(imageHash);
-
-  await client.upsert(METADATA_COLLECTION, {
-    wait: true,
-    points: [
-      {
-        id: pointId,
-        vector: [1, 1, 1, 1], // Dummy vector with dim=4, non-zero magnitude
-        payload: {
-          type: "img_desc",
-          image_hash: imageHash,
-          description,
-        },
-      },
-    ],
   });
 }
